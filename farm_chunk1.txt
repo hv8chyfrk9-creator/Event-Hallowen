@@ -1,0 +1,2 @@
+-- PLACEHOLDER_CHUNK1 -- user will need full upload if this fails
+print('chunk1 missing')
