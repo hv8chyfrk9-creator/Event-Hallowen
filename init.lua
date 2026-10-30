@@ -3,26 +3,18 @@
 -- ==========================================
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui", 10)
-if not playerGui then
-	warn("[Delta Hub] No PlayerGui")
-	return
-end
+if not playerGui then return end
 
 local HALLOWEEN_PLACE_ID = 128614435234859
 local NEXT_URL = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/tab_farm.lua"
 local BASE = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 
 local S = getgenv().DeltaHub
-if type(S) ~= "table" then
-	S = {}
-	getgenv().DeltaHub = S
-end
+if type(S) ~= "table" then S = {}; getgenv().DeltaHub = S end
 S.world = "hallowen"
 S.placeId = HALLOWEEN_PLACE_ID
 S.scriptReady = false
@@ -31,13 +23,7 @@ S.UI = S.UI or {}
 S.Signals = S.Signals or {}
 S.BASE_URL = BASE
 
-local function checkPlaceId()
-	if game.PlaceId == HALLOWEEN_PLACE_ID then return true end
-	if getgenv().DeltaHubForceLoad then return true end
-	return false
-end
-
-if not checkPlaceId() then
+if game.PlaceId ~= HALLOWEEN_PLACE_ID and not getgenv().DeltaHubForceLoad then
 	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId)
 	return
 end
@@ -51,22 +37,15 @@ S.routeCFrames = S.routeCFrames or {}
 S.routeModes = S.routeModes or {}
 do
 	local function loadPart(name)
-		local url = BASE .. name
-		local ok, body = pcall(function() return game:HttpGet(url) end)
+		local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
 		if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
-			local fn, err = loadstring(body)
-			if fn then
-				local ok2, e2 = pcall(fn)
-				if not ok2 then warn("[Delta Hub]", name, "run", e2) end
-			else
-				warn("[Delta Hub]", name, "load", err)
-			end
-		else
-			warn("[Delta Hub]", name, "download failed")
+			local fn = loadstring(body)
+			if fn then pcall(fn) end
 		end
 	end
-	loadPart("route_data_a.lua")
-	loadPart("route_data_b.lua")
+	loadPart("route_data.lua")
+	loadPart("route_data_ext.lua")
+	loadPart("route_data_ext2.lua")
 end
 
 S.orderedWinBlocks = {
@@ -98,10 +77,7 @@ function S.waitAliveHrp(returnCf)
 	hrp = char:WaitForChild("HumanoidRootPart", 8)
 	local newHum = char:WaitForChild("Humanoid", 8)
 	task.wait(0.35)
-	if hrp and returnCf then
-		hrp.CFrame = returnCf
-		hrp.AssemblyLinearVelocity = Vector3.zero
-	end
+	if hrp and returnCf then hrp.CFrame = returnCf; hrp.AssemblyLinearVelocity = Vector3.zero end
 	if newHum and newHum.Health <= 0 then return S.waitAliveHrp(returnCf) end
 	return hrp
 end
@@ -152,7 +128,6 @@ local function createLoadingUi()
 	bg.Parent = gui
 	bg.Size = UDim2.new(1, 0, 1, 0)
 	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
-	bg.BorderSizePixel = 0
 	local title = Instance.new("TextLabel")
 	title.Parent = bg
 	title.Size = UDim2.new(1, -40, 0, 28)
@@ -198,10 +173,7 @@ local function createLoadingUi()
 end
 
 function S.setProgress(p, title, sub)
-	if p ~= nil then
-		p = math.clamp(tonumber(p) or 0, 0, 100)
-		S.loadProgress = p
-	end
+	if p ~= nil then S.loadProgress = math.clamp(tonumber(p) or 0, 0, 100) end
 	if S.UI.LoadingBar then S.UI.LoadingBar.Size = UDim2.new((S.loadProgress or 0) / 100, 0, 1, 0) end
 	if S.UI.LoadingPct then S.UI.LoadingPct.Text = string.format("%.1f%%", S.loadProgress or 0) end
 	if S.UI.LoadingSub and sub then S.UI.LoadingSub.Text = tostring(sub) end
@@ -211,18 +183,13 @@ function S.fadeAndDestroyLoading()
 	local gui = S.UI.LoadingGui
 	if not gui then return end
 	local bg = gui:FindFirstChildOfClass("Frame")
-	if bg then
-		for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.08) end
-	end
+	if bg then for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.08) end end
 	pcall(function() gui:Destroy() end)
 	S.UI.LoadingGui = nil
 end
 
 createLoadingUi()
 S.setProgress(2, "Init", "Cargando rutas...")
-if not S.routeCFrames or #S.routeCFrames == 0 then
-	warn("[Delta Hub] Sin CFrames tras route_data")
-end
 S.setProgress(8, "Init", "Limpieza del mapa...")
 
 local cleanupChoice = "normal"
@@ -243,14 +210,12 @@ do
 	title.Text = "Limpieza inicial"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextSize = 15
-	title.TextXAlignment = Enum.TextXAlignment.Left
 	local chosen = nil
-	local options = {
+	for i, opt in ipairs({
 		{ key = "normal", label = "Normal  (seguro)", color = Color3.fromRGB(40, 100, 55) },
 		{ key = "fast", label = "Rapida", color = Color3.fromRGB(40, 80, 140) },
 		{ key = "super", label = "Super rapida", color = Color3.fromRGB(120, 60, 140) },
-	}
-	for i, opt in ipairs(options) do
+	}) do
 		local b = Instance.new("TextButton")
 		b.Parent = holder
 		b.Size = UDim2.new(1, -20, 0, 32)
@@ -278,22 +243,19 @@ elseif cleanupChoice == "super" then step, waitTime = 5, 0.15 end
 
 task.spawn(function()
 	local function getHrp()
-		local char = player.Character
-		if not char then char = player.CharacterAdded:Wait() end
+		local char = player.Character or player.CharacterAdded:Wait()
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		local hrp = char:FindFirstChild("HumanoidRootPart")
-		if hrp and hum and hum.Health > 0 then return hrp, hum end
+		if hrp and hum and hum.Health > 0 then return hrp end
 		S.setProgress(S.loadProgress or 20, "Init", "Reapareciendo...")
-		hrp = S.waitAliveHrp and S.waitAliveHrp(nil) or nil
-		hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		return hrp, hum
+		return S.waitAliveHrp and S.waitAliveHrp(nil)
 	end
-	local hrp = select(1, getHrp())
+	local hrp = getHrp()
 	local total = (routeForClean and #routeForClean) or 0
 	if hrp and routeForClean and total > 0 then
 		local i = 1
 		while i <= total do
-			hrp = select(1, getHrp())
+			hrp = getHrp()
 			if not hrp then task.wait(0.5)
 			else
 				pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero; hrp.CFrame = routeForClean[i] end)
@@ -301,20 +263,16 @@ task.spawn(function()
 				S.setProgress(12 + (i / total) * 33, "Init", "Limpieza " .. i .. "/" .. total)
 				task.wait(waitTime)
 				local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-				if h and h.Health <= 0 then getHrp(); task.wait(0.3)
-				else i = i + step end
+				if h and h.Health <= 0 then getHrp(); task.wait(0.3) else i = i + step end
 			end
 		end
 	end
 	S.runExactCleanup()
 	S.setProgress(48, "Init", "Cargando Farm...")
 	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
-	if not ok or type(body) ~= "string" or #body < 20 then
-		S.setProgress(50, "Error", "Falta tab_farm.lua"); return
-	end
-	local fn, err = loadstring(body)
-	if not fn then warn("[Delta Hub] farm load", err); return end
+	if not ok or type(body) ~= "string" or #body < 20 then S.setProgress(50, "Error", "Falta tab_farm"); return end
+	local fn = loadstring(body)
+	if not fn then return end
 	S.setProgress(50, "Init", "Entrando a Farm...")
-	local okRun, runErr = pcall(fn)
-	if not okRun then warn("[Delta Hub] farm run", runErr) end
+	pcall(fn)
 end)
