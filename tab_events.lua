@@ -182,17 +182,12 @@ setProgress(78, "Events", "Admin abuse / daily...")
 
 local adminBody = section(eventsPage, "Admin abuse", 1)
 local _, paintChoco, hitChoco = makeSwitch(adminBody, "Auto Chocolate Hunt", 1)
-local _, paintCandy, hitCandy = makeSwitch(adminBody, "Auto Candy Corn", 2)
-local _, paintCoin, hitCoin = makeSwitch(adminBody, "Auto Battle Coin", 3)
-local _, paintXp, hitXp = makeSwitch(adminBody, "Auto XP Event Key", 4)
+local _, paintCoin, hitCoin = makeSwitch(adminBody, "Auto Battle Coin", 2)
+local _, paintXp, hitXp = makeSwitch(adminBody, "Auto XP Event Key", 3)
 
 hitChoco.MouseButton1Click:Connect(function()
 	E.chocolate = not E.chocolate
 	paintChoco(E.chocolate)
-end)
-hitCandy.MouseButton1Click:Connect(function()
-	E.candy = not E.candy
-	paintCandy(E.candy)
 end)
 hitCoin.MouseButton1Click:Connect(function()
 	E.coin = not E.coin
@@ -203,11 +198,19 @@ hitXp.MouseButton1Click:Connect(function()
 	paintXp(E.xp)
 end)
 paintChoco(E.chocolate)
-paintCandy(E.candy)
 paintCoin(E.coin)
 paintXp(E.xp)
 
-local dailyBody = section(eventsPage, "Daily", 2)
+-- Limited Time (eventos por tiempo limitado)
+local limitedBody = section(eventsPage, "Limited Time", 2)
+local _, paintCandy, hitCandy = makeSwitch(limitedBody, "Auto Candy Corn", 1)
+hitCandy.MouseButton1Click:Connect(function()
+	E.candy = not E.candy
+	paintCandy(E.candy)
+end)
+paintCandy(E.candy)
+
+local dailyBody = section(eventsPage, "Daily", 3)
 local _, paintSK, hitSK = makeSwitch(dailyBody, "Auto Special Keys", 1)
 hitSK.MouseButton1Click:Connect(function()
 	E.autoSpecialKeys = not E.autoSpecialKeys
