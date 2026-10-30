@@ -26,9 +26,7 @@ local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator
 local NEXT_URL = BASE .. "tab_player.lua"
 
 local function setProgress(p, title, sub)
-	if S.setProgress then
-		S.setProgress(p, title, sub)
-	end
+	if S.setProgress then S.setProgress(p, title, sub) end
 end
 
 setProgress(51, "Farm", "Creando interfaz base...")
@@ -103,9 +101,7 @@ local function section(parent, title, order)
 end
 
 local function ensureHub()
-	if S.UI.ScreenGui and S.UI.ScreenGui.Parent then
-		return
-	end
+	if S.UI.ScreenGui and S.UI.ScreenGui.Parent then return end
 	local sg = Instance.new("ScreenGui")
 	sg.Name = "DeltaHubMinimal"
 	sg.ResetOnSpawn = false
@@ -113,7 +109,6 @@ local function ensureHub()
 	sg.DisplayOrder = 999
 	sg.Parent = playerGui
 	S.UI.ScreenGui = sg
-
 	local main = Instance.new("Frame")
 	main.Name = "MainFrame"
 	main.Parent = sg
@@ -126,14 +121,12 @@ local function ensureHub()
 	main.Visible = false
 	corner(main, 10)
 	S.UI.MainFrame = main
-
 	local top = Instance.new("Frame")
 	top.Parent = main
 	top.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
 	top.Size = UDim2.new(1, 0, 0, 34)
 	corner(top, 10)
 	S.UI.TopBar = top
-
 	local title = Instance.new("TextLabel")
 	title.Name = "SectionTitle"
 	title.Parent = top
@@ -146,7 +139,6 @@ local function ensureHub()
 	title.TextSize = 13
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	S.UI.SectionTitle = title
-
 	local minBtn = Instance.new("TextButton")
 	minBtn.Parent = top
 	minBtn.BackgroundTransparency = 1
@@ -157,7 +149,6 @@ local function ensureHub()
 	minBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
 	minBtn.TextSize = 16
 	S.UI.MinimizeBtn = minBtn
-
 	local side = Instance.new("Frame")
 	side.Name = "Sidebar"
 	side.Parent = sg
@@ -171,7 +162,6 @@ local function ensureHub()
 	sideLay.SortOrder = Enum.SortOrder.LayoutOrder
 	sideLay.Padding = UDim.new(0, 26)
 	S.UI.SidebarLayout = sideLay
-
 	local content = Instance.new("Frame")
 	content.Name = "ContentArea"
 	content.Parent = main
@@ -179,7 +169,6 @@ local function ensureHub()
 	content.Position = UDim2.new(0, 10, 0, 40)
 	content.Size = UDim2.new(1, -20, 1, -50)
 	S.UI.ContentArea = content
-
 	local logo = Instance.new("TextButton")
 	logo.Name = "FloatingLogo"
 	logo.Parent = sg
@@ -195,16 +184,11 @@ local function ensureHub()
 	logo.Draggable = true
 	corner(logo, 99)
 	S.UI.FloatingLogo = logo
-
 	minBtn.MouseButton1Click:Connect(function()
-		main.Visible = false
-		side.Visible = false
-		logo.Visible = true
+		main.Visible = false; side.Visible = false; logo.Visible = true
 	end)
 	logo.MouseButton1Click:Connect(function()
-		main.Visible = true
-		side.Visible = true
-		logo.Visible = false
+		main.Visible = true; side.Visible = true; logo.Visible = false
 	end)
 end
 
@@ -713,6 +697,23 @@ startBtn.MouseButton1Click:Connect(function()
 			end
 		end
 	end)
+end)
+
+-- load Auto funciones
+task.spawn(function()
+	local url = (S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/") .. "tab_farm_auto.lua"
+	local ok, body = pcall(function() return game:HttpGet(url) end)
+	if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
+		local fn, err = loadstring(body)
+		if fn then
+			local ok2, e2 = pcall(fn)
+			if not ok2 then warn("[Delta Hub] tab_farm_auto run", e2) end
+		else
+			warn("[Delta Hub] tab_farm_auto load", err)
+		end
+	else
+		warn("[Delta Hub] tab_farm_auto download failed")
+	end
 end)
 
 setProgress(62, "Farm", "Farm lista")
