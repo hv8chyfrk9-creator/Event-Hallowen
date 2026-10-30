@@ -38,38 +38,35 @@ local function checkPlaceId()
 end
 
 if not checkPlaceId() then
-	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId, "esperado", HALLOWEEN_PLACE_ID)
+	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId)
 	return
 end
 
 S.targetNamesToDestroy = {
-	"TarantulaS13",
-	"WindZonesS14",
-	"Lava_Stage15",
-	"MovingWallsS6",
-	"EyeLaserStage10",
-	"Zone",
-	"TwompsS7",
+	"TarantulaS13", "WindZonesS14", "Lava_Stage15",
+	"MovingWallsS6", "EyeLaserStage10", "Zone", "TwompsS7",
 }
 
 S.routeCFrames = S.routeCFrames or {}
 S.routeModes = S.routeModes or {}
 do
-	local url = BASE .. "route_data.lua"
-	local ok, body = pcall(function()
-		return game:HttpGet(url)
-	end)
-	if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
-		local fn, err = loadstring(body)
-		if fn then
-			local ok2, e2 = pcall(fn)
-			if not ok2 then warn("[Delta Hub] route_data run", e2) end
+	local function loadPart(name)
+		local url = BASE .. name
+		local ok, body = pcall(function() return game:HttpGet(url) end)
+		if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
+			local fn, err = loadstring(body)
+			if fn then
+				local ok2, e2 = pcall(fn)
+				if not ok2 then warn("[Delta Hub]", name, "run", e2) end
+			else
+				warn("[Delta Hub]", name, "load", err)
+			end
 		else
-			warn("[Delta Hub] route_data load", err)
+			warn("[Delta Hub]", name, "download failed")
 		end
-	else
-		warn("[Delta Hub] route_data download failed")
 	end
+	loadPart("route_data_a.lua")
+	loadPart("route_data_b.lua")
 end
 
 S.orderedWinBlocks = {
@@ -94,16 +91,10 @@ function S.waitAliveHrp(returnCf)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if hrp and hum and hum.Health > 0 then
-		return hrp
-	end
-	if not char or not hum or hum.Health <= 0 then
-		player.CharacterAdded:Wait()
-	end
+	if hrp and hum and hum.Health > 0 then return hrp end
+	if not char or not hum or hum.Health <= 0 then player.CharacterAdded:Wait() end
 	char = player.Character
-	if not char then
-		return nil
-	end
+	if not char then return nil end
 	hrp = char:WaitForChild("HumanoidRootPart", 8)
 	local newHum = char:WaitForChild("Humanoid", 8)
 	task.wait(0.35)
@@ -111,9 +102,7 @@ function S.waitAliveHrp(returnCf)
 		hrp.CFrame = returnCf
 		hrp.AssemblyLinearVelocity = Vector3.zero
 	end
-	if newHum and newHum.Health <= 0 then
-		return S.waitAliveHrp(returnCf)
-	end
+	if newHum and newHum.Health <= 0 then return S.waitAliveHrp(returnCf) end
 	return hrp
 end
 
@@ -123,13 +112,9 @@ function S.runExactCleanup()
 	for _, obj in pairs(Workspace:GetDescendants()) do
 		local name = obj.Name
 		for i = 1, #list do
-			if name == list[i] then
-				pcall(function() obj:Destroy() end)
-			end
+			if name == list[i] then pcall(function() obj:Destroy() end) end
 		end
-		if string.sub(name, 1, 4) == "Pair" then
-			pcall(function() obj:Destroy() end)
-		end
+		if string.sub(name, 1, 4) == "Pair" then pcall(function() obj:Destroy() end) end
 	end
 end
 
@@ -217,15 +202,9 @@ function S.setProgress(p, title, sub)
 		p = math.clamp(tonumber(p) or 0, 0, 100)
 		S.loadProgress = p
 	end
-	if S.UI.LoadingBar then
-		S.UI.LoadingBar.Size = UDim2.new((S.loadProgress or 0) / 100, 0, 1, 0)
-	end
-	if S.UI.LoadingPct then
-		S.UI.LoadingPct.Text = string.format("%.1f%%", S.loadProgress or 0)
-	end
-	if S.UI.LoadingSub and sub then
-		S.UI.LoadingSub.Text = tostring(sub)
-	end
+	if S.UI.LoadingBar then S.UI.LoadingBar.Size = UDim2.new((S.loadProgress or 0) / 100, 0, 1, 0) end
+	if S.UI.LoadingPct then S.UI.LoadingPct.Text = string.format("%.1f%%", S.loadProgress or 0) end
+	if S.UI.LoadingSub and sub then S.UI.LoadingSub.Text = tostring(sub) end
 end
 
 function S.fadeAndDestroyLoading()
@@ -233,10 +212,7 @@ function S.fadeAndDestroyLoading()
 	if not gui then return end
 	local bg = gui:FindFirstChildOfClass("Frame")
 	if bg then
-		for i = 0, 10 do
-			bg.BackgroundTransparency = i / 10
-			task.wait(0.08)
-		end
+		for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.08) end
 	end
 	pcall(function() gui:Destroy() end)
 	S.UI.LoadingGui = nil
@@ -253,15 +229,11 @@ local cleanupChoice = "normal"
 do
 	local gui = S.UI.LoadingGui
 	local holder = Instance.new("Frame")
-	holder.Name = "CleanChoice"
 	holder.Parent = gui
 	holder.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-	holder.BackgroundTransparency = 0.1
 	holder.Position = UDim2.new(0.5, -160, 0.55, 0)
 	holder.Size = UDim2.new(0, 320, 0, 168)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = holder
+	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 10)
 	local title = Instance.new("TextLabel")
 	title.Parent = holder
 	title.BackgroundTransparency = 1
@@ -272,16 +244,6 @@ do
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextSize = 15
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	local hint = Instance.new("TextLabel")
-	hint.Parent = holder
-	hint.BackgroundTransparency = 1
-	hint.Size = UDim2.new(1, -16, 0, 18)
-	hint.Position = UDim2.new(0, 8, 0, 34)
-	hint.Font = Enum.Font.Gotham
-	hint.Text = "Elige velocidad de limpieza (auto en 12s)"
-	hint.TextColor3 = Color3.fromRGB(160, 160, 175)
-	hint.TextSize = 11
-	hint.TextXAlignment = Enum.TextXAlignment.Left
 	local chosen = nil
 	local options = {
 		{ key = "normal", label = "Normal  (seguro)", color = Color3.fromRGB(40, 100, 55) },
@@ -298,118 +260,61 @@ do
 		b.Text = opt.label
 		b.TextColor3 = Color3.fromRGB(255, 255, 255)
 		b.TextSize = 13
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(0, 6)
-		bc.Parent = b
-		b.MouseButton1Click:Connect(function()
-			chosen = opt.key
-		end)
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+		b.MouseButton1Click:Connect(function() chosen = opt.key end)
 	end
 	local t0 = tick()
-	while chosen == nil and tick() - t0 < 12 do
-		task.wait(0.1)
-	end
+	while chosen == nil and tick() - t0 < 12 do task.wait(0.1) end
 	cleanupChoice = chosen or "normal"
 	holder:Destroy()
 end
 
 S.setProgress(12, "Init", "Limpiando (" .. cleanupChoice .. ")...")
-
 local routeForClean = select(1, S.getRouteCFramesForMode(cleanupChoice))
-if not routeForClean or #routeForClean == 0 then
-	routeForClean = S.routeCFrames
-end
-
-local step = 2
-local waitTime = 0.35
-if cleanupChoice == "fast" then
-	step = 3
-	waitTime = 0.22
-elseif cleanupChoice == "super" then
-	step = 5
-	waitTime = 0.15
-end
+if not routeForClean or #routeForClean == 0 then routeForClean = S.routeCFrames end
+local step, waitTime = 2, 0.35
+if cleanupChoice == "fast" then step, waitTime = 3, 0.22
+elseif cleanupChoice == "super" then step, waitTime = 5, 0.15 end
 
 task.spawn(function()
 	local function getHrp()
 		local char = player.Character
-		if not char then
-			char = player.CharacterAdded:Wait()
-		end
+		if not char then char = player.CharacterAdded:Wait() end
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		local hrp = char:FindFirstChild("HumanoidRootPart")
-		if hrp and hum and hum.Health > 0 then
-			return hrp, hum
-		end
+		if hrp and hum and hum.Health > 0 then return hrp, hum end
 		S.setProgress(S.loadProgress or 20, "Init", "Reapareciendo...")
-		if S.waitAliveHrp then
-			hrp = S.waitAliveHrp(nil)
-		else
-			player.CharacterAdded:Wait()
-			char = player.Character
-			hrp = char and char:WaitForChild("HumanoidRootPart", 10)
-		end
+		hrp = S.waitAliveHrp and S.waitAliveHrp(nil) or nil
 		hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		return hrp, hum
 	end
-
-	local hrp, hum = getHrp()
+	local hrp = select(1, getHrp())
 	local total = (routeForClean and #routeForClean) or 0
-
 	if hrp and routeForClean and total > 0 then
 		local i = 1
 		while i <= total do
-			hrp, hum = getHrp()
-			if not hrp then
-				task.wait(0.5)
+			hrp = select(1, getHrp())
+			if not hrp then task.wait(0.5)
 			else
-				pcall(function()
-					hrp.AssemblyLinearVelocity = Vector3.zero
-					hrp.CFrame = routeForClean[i]
-				end)
+				pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero; hrp.CFrame = routeForClean[i] end)
 				S.runExactCleanup()
-				local pct = 12 + (i / total) * 33
-				S.setProgress(pct, "Init", "Limpieza " .. i .. "/" .. total)
+				S.setProgress(12 + (i / total) * 33, "Init", "Limpieza " .. i .. "/" .. total)
 				task.wait(waitTime)
-				local char = player.Character
-				local h = char and char:FindFirstChildOfClass("Humanoid")
-				if h and h.Health <= 0 then
-					S.setProgress(pct, "Init", "Muerto en limpieza, reapareciendo...")
-					getHrp()
-					task.wait(0.3)
-				else
-					i = i + step
-				end
+				local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+				if h and h.Health <= 0 then getHrp(); task.wait(0.3)
+				else i = i + step end
 			end
 		end
 	end
-
 	S.runExactCleanup()
 	S.setProgress(48, "Init", "Cargando Farm...")
-
-	local ok, body = pcall(function()
-		return game:HttpGet(NEXT_URL)
-	end)
+	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
 	if not ok or type(body) ~= "string" or #body < 20 then
-		warn("[Delta Hub] init: no tab_farm", body)
-		S.setProgress(50, "Error", "Falta tab_farm.lua")
-		return
-	end
-	if body:sub(1, 9) == "<!DOCTYPE" or body:sub(1, 6) == "<html>" then
-		warn("[Delta Hub] init: HTML en tab_farm")
-		S.setProgress(50, "Error", "Sube tab_farm.lua")
-		return
+		S.setProgress(50, "Error", "Falta tab_farm.lua"); return
 	end
 	local fn, err = loadstring(body)
-	if not fn then
-		warn("[Delta Hub] init loadstring tab_farm", err)
-		S.setProgress(50, "Error", "Error loadstring Farm")
-		return
-	end
+	if not fn then warn("[Delta Hub] farm load", err); return end
 	S.setProgress(50, "Init", "Entrando a Farm...")
 	local okRun, runErr = pcall(fn)
-	if not okRun then
-		warn("[Delta Hub] tab_farm run", runErr)
-		S.setProgress(50, "Error", "Error al ejecutar Farm")
-	end
+	if not okRun then warn("[Delta Hub] farm run", runErr) end
 end)
