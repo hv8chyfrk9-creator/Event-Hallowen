@@ -8,14 +8,11 @@ local function http(u)
 	if body:find("<!DOCTYPE") then return nil end
 	return body
 end
-local ui = http(BASE .. "events_ui.lua")
+local a = http(BASE .. "events_ui_a.lua")
+local b = http(BASE .. "events_ui_b.lua")
 local logic = http(BASE .. "events_logic.lua")
-if not ui then
-	warn("[Delta Hub] falta events_ui, usando fallback completo")
-	ui = http(BASE .. "events_fallback.lua")
-end
-if not ui then warn("[Delta Hub] events UI missing") return end
-local body = ui .. (logic or "")
+if not a or not b then warn("[Delta Hub] falta events UI parts") return end
+local body = a .. b .. (logic or "")
 local fn, err = loadstring(body)
 if not fn then warn("[Delta Hub] events loadstring", err) return end
 local ok, e = pcall(fn)
