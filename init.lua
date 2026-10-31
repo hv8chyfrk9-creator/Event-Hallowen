@@ -189,7 +189,7 @@ function S.fadeAndDestroyLoading()
 end
 
 createLoadingUi()
-S.setProgress(2, "Init", "Cargando rutas...")
+S.setProgress(2, "Init", "Preparando mundo...")
 S.setProgress(8, "Init", "Limpieza del mapa...")
 
 local cleanupChoice = "normal"
@@ -268,11 +268,11 @@ task.spawn(function()
 		end
 	end
 	S.runExactCleanup()
-	S.setProgress(48, "Init", "Cargando Farm...")
+	S.setProgress(48, "Init", "Cargando interfaz...")
 	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
-	if not ok or type(body) ~= "string" or #body < 20 then S.setProgress(50, "Error", "Falta tab_farm"); return end
+	if not ok or type(body) ~= "string" or #body < 20 then S.setProgress(50, "Error", "No se pudo cargar la interfaz"); return end
 	local fn = loadstring(body)
 	if not fn then return end
-	S.setProgress(50, "Init", "Entrando a Farm...")
+	S.setProgress(50, "Init", "Iniciando interfaz...")
 	pcall(fn)
 end)
