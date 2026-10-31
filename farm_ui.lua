@@ -1,4 +1,4 @@
--- DELTA HUB farm_ui: pestaña Farm (solo UI + señales al cerebro)
+-- DELTA HUB farm_ui: UI + señales al cerebro (sin mover al jugador)
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui", 10)
@@ -27,6 +27,7 @@ local function corner(o, r)
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, r or 6)
 	c.Parent = o
+	return c
 end
 
 function F.notify(msg)
@@ -66,6 +67,7 @@ local function ensureHub()
 	main.Size = UDim2.new(0, 400, 0, 360)
 	main.Active = true
 	main.Draggable = true
+	main.Visible = false
 	corner(main, 10)
 	S.UI.MainFrame = main
 
@@ -76,155 +78,148 @@ local function ensureHub()
 	corner(top, 10)
 
 	local title = Instance.new("TextLabel")
+	title.Name = "SectionTitle"
 	title.Parent = top
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(1, -50, 1, 0)
-	title.Position = UDim2.new(0, 10, 0, 0)
+	title.Position = UDim2.new(0, 12, 0, 0)
+	title.Size = UDim2.new(1, -90, 1, 0)
 	title.Font = Enum.Font.GothamBold
-	title.Text = "Delta Hub"
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextSize = 14
+	title.Text = "Farm"
+	title.TextColor3 = Color3.fromRGB(240, 240, 245)
+	title.TextSize = 13
 	title.TextXAlignment = Enum.TextXAlignment.Left
+	S.UI.SectionTitle = title
 
 	local minBtn = Instance.new("TextButton")
 	minBtn.Parent = top
-	minBtn.Size = UDim2.new(0, 34, 0, 24)
-	minBtn.Position = UDim2.new(1, -40, 0.5, -12)
-	minBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-	minBtn.Text = "_"
-	minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	minBtn.BackgroundTransparency = 1
+	minBtn.Position = UDim2.new(1, -34, 0, 0)
+	minBtn.Size = UDim2.new(0, 34, 1, 0)
 	minBtn.Font = Enum.Font.GothamBold
-	minBtn.TextSize = 14
-	corner(minBtn, 5)
-	local minimized = false
-	minBtn.MouseButton1Click:Connect(function()
-		minimized = not minimized
-		if minimized then
-			main.Size = UDim2.new(0, 400, 0, 34)
-			if S.UI.Side then S.UI.Side.Visible = false end
-			if S.UI.Content then S.UI.Content.Visible = false end
-		else
-			main.Size = UDim2.new(0, 400, 0, 360)
-			if S.UI.Side then S.UI.Side.Visible = true end
-			if S.UI.Content then S.UI.Content.Visible = true end
-		end
-	end)
+	minBtn.Text = "-"
+	minBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+	minBtn.TextSize = 16
 
 	local side = Instance.new("Frame")
-	side.Parent = main
-	side.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
-	side.Position = UDim2.new(0, 0, 0, 34)
-	side.Size = UDim2.new(0, 88, 1, -34)
-	S.UI.Side = side
+	side.Name = "Sidebar"
+	side.Parent = sg
+	side.BackgroundTransparency = 1
+	side.Size = UDim2.new(0, 92, 0, 220)
+	side.Position = UDim2.new(0.5, -310, 0.5, -100)
+	side.Visible = false
+	S.UI.Sidebar = side
 	local sideLay = Instance.new("UIListLayout")
 	sideLay.Parent = side
-	sideLay.Padding = UDim.new(0, 6)
 	sideLay.SortOrder = Enum.SortOrder.LayoutOrder
-	local pad = Instance.new("UIPadding")
-	pad.Parent = side
-	pad.PaddingTop = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 6)
-	pad.PaddingRight = UDim.new(0, 6)
+	sideLay.Padding = UDim.new(0, 20)
 
 	local content = Instance.new("Frame")
+	content.Name = "ContentArea"
 	content.Parent = main
 	content.BackgroundTransparency = 1
-	content.Position = UDim2.new(0, 88, 0, 34)
-	content.Size = UDim2.new(1, -88, 1, -34)
+	content.Position = UDim2.new(0, 10, 0, 40)
+	content.Size = UDim2.new(1, -20, 1, -50)
+	S.UI.ContentArea = content
 	S.UI.Content = content
 
-	S.UI.pages = S.UI.pages or {}
-	S.UI.tabBtns = S.UI.tabBtns or {}
+	local logo = Instance.new("TextButton")
+	logo.Name = "FloatingLogo"
+	logo.Parent = sg
+	logo.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+	logo.Position = UDim2.new(0, 30, 0, 30)
+	logo.Size = UDim2.new(0, 45, 0, 45)
+	logo.Font = Enum.Font.GothamBold
+	logo.Text = "HW"
+	logo.TextColor3 = Color3.fromRGB(240, 240, 245)
+	logo.TextSize = 15
+	logo.Visible = false
+	logo.Active = true
+	logo.Draggable = true
+	corner(logo, 99)
+	S.UI.FloatingLogo = logo
 
-	function S.UI.showPage(name)
-		for n, p in pairs(S.UI.pages) do
-			p.Visible = (n == name)
-		end
-		for n, b in pairs(S.UI.tabBtns) do
-			b.BackgroundColor3 = (n == name) and Color3.fromRGB(50, 90, 140) or Color3.fromRGB(28, 28, 34)
-		end
-	end
-
-	function S.UI.addTab(name, order)
-		local btn = Instance.new("TextButton")
-		btn.Parent = side
-		btn.Size = UDim2.new(1, 0, 0, 32)
-		btn.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
-		btn.Text = name
-		btn.TextColor3 = Color3.fromRGB(240, 240, 245)
-		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 12
-		btn.LayoutOrder = order or 1
-		corner(btn, 6)
-		S.UI.tabBtns[name] = btn
-
-		local page = Instance.new("ScrollingFrame")
-		page.Parent = content
-		page.BackgroundTransparency = 1
-		page.Size = UDim2.new(1, 0, 1, 0)
-		page.CanvasSize = UDim2.new(0, 0, 0, 0)
-		page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		page.ScrollBarThickness = 4
-		page.Visible = false
-		local lay = Instance.new("UIListLayout")
-		lay.Parent = page
-		lay.Padding = UDim.new(0, 8)
-		lay.SortOrder = Enum.SortOrder.LayoutOrder
-		local pp = Instance.new("UIPadding")
-		pp.Parent = page
-		pp.PaddingTop = UDim.new(0, 8)
-		pp.PaddingLeft = UDim.new(0, 8)
-		pp.PaddingRight = UDim.new(0, 8)
-		S.UI.pages[name] = page
-
-		btn.MouseButton1Click:Connect(function()
-			S.UI.showPage(name)
-		end)
-		return page
-	end
+	minBtn.MouseButton1Click:Connect(function()
+		main.Visible = false
+		side.Visible = false
+		logo.Visible = true
+	end)
+	logo.MouseButton1Click:Connect(function()
+		main.Visible = true
+		side.Visible = true
+		logo.Visible = false
+	end)
 end
 
-ensureHub()
-local farmPage = S.UI.addTab("Farm", 1)
-S.UI.showPage("Farm")
-if S.UI.MainFrame then S.UI.MainFrame.Visible = true end
+local function createScrollingPage(parent)
+	local sc = Instance.new("ScrollingFrame")
+	sc.Parent = parent
+	sc.BackgroundTransparency = 1
+	sc.Size = UDim2.new(1, 0, 1, 0)
+	sc.CanvasSize = UDim2.new(0, 0, 0, 0)
+	sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	sc.ScrollBarThickness = 4
+	sc.Visible = false
+	local lay = Instance.new("UIListLayout")
+	lay.Parent = sc
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	lay.Padding = UDim.new(0, 8)
+	local pad = Instance.new("UIPadding")
+	pad.Parent = sc
+	pad.PaddingTop = UDim.new(0, 4)
+	pad.PaddingBottom = UDim.new(0, 8)
+	return sc
+end
+
+local function makeTabButton(name, order)
+	local b = Instance.new("TextButton")
+	b.Parent = S.UI.Sidebar
+	b.Size = UDim2.new(0, 92, 0, 42)
+	b.BackgroundColor3 = Color3.fromRGB(170, 35, 35)
+	b.Font = Enum.Font.GothamBold
+	b.Text = name
+	b.TextColor3 = Color3.fromRGB(255, 255, 255)
+	b.TextSize = 14
+	b.LayoutOrder = order
+	corner(b, 6)
+	return b
+end
 
 local function section(parent, title, order)
-	local box = Instance.new("Frame")
-	box.Parent = parent
-	box.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-	box.BackgroundTransparency = 0.2
-	box.Size = UDim2.new(1, 0, 0, 0)
-	box.AutomaticSize = Enum.AutomaticSize.Y
-	box.LayoutOrder = order or 1
-	corner(box, 8)
+	local wrap = Instance.new("Frame")
+	wrap.Parent = parent
+	wrap.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+	wrap.BackgroundTransparency = 0.25
+	wrap.Size = UDim2.new(1, -4, 0, 0)
+	wrap.AutomaticSize = Enum.AutomaticSize.Y
+	wrap.LayoutOrder = order or 1
+	corner(wrap, 8)
 	local lay = Instance.new("UIListLayout")
-	lay.Parent = box
-	lay.Padding = UDim.new(0, 6)
+	lay.Parent = wrap
 	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	lay.Padding = UDim.new(0, 6)
 	local pad = Instance.new("UIPadding")
-	pad.Parent = box
+	pad.Parent = wrap
 	pad.PaddingTop = UDim.new(0, 8)
 	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 8)
-	pad.PaddingRight = UDim.new(0, 8)
-	local t = Instance.new("TextLabel")
-	t.Parent = box
-	t.BackgroundTransparency = 1
-	t.Size = UDim2.new(1, 0, 0, 18)
-	t.Font = Enum.Font.GothamBold
-	t.Text = title
-	t.TextColor3 = Color3.fromRGB(200, 200, 210)
-	t.TextSize = 12
-	t.TextXAlignment = Enum.TextXAlignment.Left
-	t.LayoutOrder = 0
-	return box
+	pad.PaddingLeft = UDim.new(0, 6)
+	pad.PaddingRight = UDim.new(0, 6)
+	local head = Instance.new("TextLabel")
+	head.Parent = wrap
+	head.BackgroundTransparency = 1
+	head.Size = UDim2.new(1, 0, 0, 18)
+	head.Font = Enum.Font.GothamBold
+	head.Text = title
+	head.TextColor3 = Color3.fromRGB(255, 255, 255)
+	head.TextSize = 13
+	head.TextXAlignment = Enum.TextXAlignment.Left
+	head.LayoutOrder = 0
+	return wrap
 end
 
 local function makeButton(parent, text, order)
 	local b = Instance.new("TextButton")
 	b.Parent = parent
-	b.Size = UDim2.new(1, 0, 0, 30)
+	b.Size = UDim2.new(1, -4, 0, 30)
 	b.BackgroundColor3 = Color3.fromRGB(36, 36, 44)
 	b.Text = text
 	b.TextColor3 = Color3.fromRGB(240, 240, 245)
@@ -235,6 +230,21 @@ local function makeButton(parent, text, order)
 	return b
 end
 
+ensureHub()
+
+local farmPage = createScrollingPage(S.UI.ContentArea)
+farmPage.Visible = true
+S.UI.FarmPage = farmPage
+
+local tabFarm = makeTabButton("Farm", 1)
+tabFarm.MouseButton1Click:Connect(function()
+	for _, ch in ipairs(S.UI.ContentArea:GetChildren()) do
+		if ch:IsA("ScrollingFrame") then ch.Visible = false end
+	end
+	farmPage.Visible = true
+	if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Farm" end
+end)
+
 -- Wins
 local winsBody = section(farmPage, "Wins", 1)
 local blocks = S.orderedWinBlocks or { { real = "WinBlock1", display = "+1 Wins" } }
@@ -242,7 +252,7 @@ local winHead = makeButton(winsBody, "  >  WinBlock: " .. (F.selectedDisplayName
 local winList = Instance.new("Frame")
 winList.Parent = winsBody
 winList.BackgroundTransparency = 1
-winList.Size = UDim2.new(1, 0, 0, 0)
+winList.Size = UDim2.new(1, -4, 0, 0)
 winList.AutomaticSize = Enum.AutomaticSize.Y
 winList.Visible = false
 winList.LayoutOrder = 2
@@ -266,7 +276,7 @@ end)
 
 local speedBox = Instance.new("TextBox")
 speedBox.Parent = winsBody
-speedBox.Size = UDim2.new(1, 0, 0, 28)
+speedBox.Size = UDim2.new(1, -4, 0, 28)
 speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
 speedBox.Text = tostring(F.routeSpeed or 250)
 speedBox.PlaceholderText = "Velocidad (max 500)"
@@ -323,7 +333,7 @@ startBtn.MouseButton1Click:Connect(function()
 	Brain.startRoute()
 end)
 
--- Auto funciones (señales simples)
+-- Auto funciones
 local autoBody = section(farmPage, "Auto funciones", 2)
 local rebirthBtn = makeButton(autoBody, "Auto Rebirth: OFF", 1)
 rebirthBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
@@ -376,7 +386,10 @@ task.spawn(function()
 				local conv = obj:FindFirstChild("Conveyor", true) or obj
 				local pos
 				if conv:IsA("BasePart") then pos = conv.Position
-				else local okp, piv = pcall(function() return conv:GetPivot() end); pos = okp and piv and piv.Position end
+				else
+					local okp, piv = pcall(function() return conv:GetPivot() end)
+					pos = okp and piv and piv.Position
+				end
 				if pos and S.Brain and S.Brain.requestMove then
 					S.Brain.requestMove({ pos = pos + Vector3.new(0, 3, 0), hold = 0.2 })
 				end
