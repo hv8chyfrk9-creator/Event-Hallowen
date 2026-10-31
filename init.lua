@@ -39,10 +39,21 @@ function S.log(msg, level)
 	level = level or "INFO"
 	local line = string.format("[%s] %s", level, tostring(msg))
 	table.insert(S._logLines, line)
-	if #S._logLines > 80 then table.remove(S._logLines, 1) end
+	if #S._logLines > 120 then table.remove(S._logLines, 1) end
 	pcall(function()
 		local term = S.UI and S.UI.DebugTerm
-		if term then term.Text = table.concat(S._logLines, "\n") end
+		local scroll = S.UI and S.UI.DebugScroll
+		if term then
+			term.Text = table.concat(S._logLines, "\n")
+			task.defer(function()
+				if not scroll or not scroll.Parent then return end
+				local absY = term.AbsoluteSize.Y
+				if absY < 1 then absY = #S._logLines * 14 end
+				scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(absY + 20, scroll.AbsoluteSize.Y))
+				local maxScroll = math.max(0, scroll.CanvasSize.Y.Offset - scroll.AbsoluteSize.Y)
+				scroll.CanvasPosition = Vector2.new(0, maxScroll)
+			end)
+		end
 	end)
 	pcall(function() print("[DeltaHub]", line) end)
 end
@@ -63,102 +74,162 @@ local function createLoadingUi()
 	bg.Size = UDim2.new(1, 0, 1, 0)
 	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
 
+	local loadFrame = Instance.new("Frame")
+	loadFrame.Name = "LoadPanel"
+	loadFrame.Parent = bg
+	loadFrame.Size = UDim2.new(0.42, 0, 0.7, 0)
+	loadFrame.Position = UDim2.new(0.04, 0, 0.15, 0)
+	loadFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+	loadFrame.BorderSizePixel = 0
+	Instance.new("UICorner", loadFrame).CornerRadius = UDim.new(0, 10)
+	local loadStroke = Instance.new("UIStroke")
+	loadStroke.Parent = loadFrame
+	loadStroke.Color = Color3.fromRGB(50, 50, 60)
+	loadStroke.Thickness = 1
+
 	local title = Instance.new("TextLabel")
-	title.Parent = bg
-	title.Size = UDim2.new(0.55, 0, 0, 28)
-	title.Position = UDim2.new(0.05, 0, 0.42, 0)
+	title.Parent = loadFrame
+	title.Size = UDim2.new(1, -32, 0, 36)
+	title.Position = UDim2.new(0, 16, 0, 24)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
 	title.Text = "Delta Hub"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextSize = 20
+	title.TextSize = 28
 	title.TextXAlignment = Enum.TextXAlignment.Left
 
 	local sub = Instance.new("TextLabel")
 	sub.Name = "Sub"
-	sub.Parent = bg
-	sub.Size = UDim2.new(0.55, 0, 0, 22)
-	sub.Position = UDim2.new(0.05, 0, 0.42, 32)
+	sub.Parent = loadFrame
+	sub.Size = UDim2.new(1, -32, 0, 28)
+	sub.Position = UDim2.new(0, 16, 0, 70)
 	sub.BackgroundTransparency = 1
 	sub.Font = Enum.Font.Gotham
 	sub.Text = "Iniciando..."
 	sub.TextColor3 = Color3.fromRGB(180, 180, 190)
-	sub.TextSize = 13
+	sub.TextSize = 16
 	sub.TextXAlignment = Enum.TextXAlignment.Left
+	sub.TextWrapped = true
 	S.UI.LoadingSub = sub
 
 	local barBg = Instance.new("Frame")
-	barBg.Parent = bg
-	barBg.Size = UDim2.new(0.5, 0, 0, 10)
-	barBg.Position = UDim2.new(0.05, 0, 0.42, 64)
+	barBg.Parent = loadFrame
+	barBg.Size = UDim2.new(1, -32, 0, 14)
+	barBg.Position = UDim2.new(0, 16, 0, 120)
 	barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-	Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 6)
 	local bar = Instance.new("Frame")
 	bar.Name = "Bar"
 	bar.Parent = barBg
 	bar.Size = UDim2.new(0, 0, 1, 0)
 	bar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
 	S.UI.LoadingBar = bar
 
 	local pct = Instance.new("TextLabel")
 	pct.Name = "Pct"
-	pct.Parent = bg
-	pct.Size = UDim2.new(0.5, 0, 0, 20)
-	pct.Position = UDim2.new(0.05, 0, 0.42, 80)
+	pct.Parent = loadFrame
+	pct.Size = UDim2.new(1, -32, 0, 28)
+	pct.Position = UDim2.new(0, 16, 0, 145)
 	pct.BackgroundTransparency = 1
 	pct.Font = Enum.Font.GothamBold
 	pct.Text = "0.0%"
 	pct.TextColor3 = Color3.fromRGB(220, 220, 230)
-	pct.TextSize = 12
+	pct.TextSize = 18
 	pct.TextXAlignment = Enum.TextXAlignment.Left
 	S.UI.LoadingPct = pct
+
+	local hint = Instance.new("TextLabel")
+	hint.Parent = loadFrame
+	hint.Size = UDim2.new(1, -32, 0, 40)
+	hint.Position = UDim2.new(0, 16, 1, -60)
+	hint.BackgroundTransparency = 1
+	hint.Font = Enum.Font.Gotham
+	hint.Text = "La terminal de la derecha muestra cada paso y error."
+	hint.TextColor3 = Color3.fromRGB(120, 120, 130)
+	hint.TextSize = 12
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.TextWrapped = true
 
 	local termFrame = Instance.new("Frame")
 	termFrame.Name = "DebugTermFrame"
 	termFrame.Parent = bg
-	termFrame.Size = UDim2.new(0.38, 0, 0.7, 0)
-	termFrame.Position = UDim2.new(0.60, 0, 0.15, 0)
+	termFrame.Size = UDim2.new(0.46, 0, 0.7, 0)
+	termFrame.Position = UDim2.new(0.50, 0, 0.15, 0)
 	termFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
 	termFrame.BorderSizePixel = 0
-	Instance.new("UICorner", termFrame).CornerRadius = UDim.new(0, 8)
+	Instance.new("UICorner", termFrame).CornerRadius = UDim.new(0, 10)
 	local stroke = Instance.new("UIStroke")
 	stroke.Parent = termFrame
 	stroke.Color = Color3.fromRGB(50, 50, 60)
 	stroke.Thickness = 1
+	S.UI.DebugTermFrame = termFrame
+	S._termExpanded = true
+	S._termFullSize = UDim2.new(0.46, 0, 0.7, 0)
+	S._termMiniSize = UDim2.new(0.46, 0, 0, 36)
 
 	local termTitle = Instance.new("TextLabel")
 	termTitle.Parent = termFrame
-	termTitle.Size = UDim2.new(1, -12, 0, 22)
-	termTitle.Position = UDim2.new(0, 6, 0, 4)
+	termTitle.Size = UDim2.new(1, -80, 0, 28)
+	termTitle.Position = UDim2.new(0, 10, 0, 4)
 	termTitle.BackgroundTransparency = 1
 	termTitle.Font = Enum.Font.GothamBold
 	termTitle.Text = "Terminal / Debug"
 	termTitle.TextColor3 = Color3.fromRGB(120, 200, 120)
-	termTitle.TextSize = 11
+	termTitle.TextSize = 13
 	termTitle.TextXAlignment = Enum.TextXAlignment.Left
 
+	local minBtn = Instance.new("TextButton")
+	minBtn.Name = "MinBtn"
+	minBtn.Parent = termFrame
+	minBtn.Size = UDim2.new(0, 60, 0, 24)
+	minBtn.Position = UDim2.new(1, -70, 0, 6)
+	minBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+	minBtn.Font = Enum.Font.GothamBold
+	minBtn.Text = "Min"
+	minBtn.TextColor3 = Color3.fromRGB(220, 220, 230)
+	minBtn.TextSize = 11
+	Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 5)
+	minBtn.MouseButton1Click:Connect(function()
+		S._termExpanded = not S._termExpanded
+		if S._termExpanded then
+			termFrame.Size = S._termFullSize
+			minBtn.Text = "Min"
+			if S.UI.DebugScroll then S.UI.DebugScroll.Visible = true end
+		else
+			termFrame.Size = S._termMiniSize
+			minBtn.Text = "Max"
+			if S.UI.DebugScroll then S.UI.DebugScroll.Visible = false end
+		end
+	end)
+
 	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "DebugScroll"
 	scroll.Parent = termFrame
-	scroll.Size = UDim2.new(1, -12, 1, -32)
-	scroll.Position = UDim2.new(0, 6, 0, 28)
-	scroll.BackgroundTransparency = 1
+	scroll.Size = UDim2.new(1, -16, 1, -40)
+	scroll.Position = UDim2.new(0, 8, 0, 34)
+	scroll.BackgroundColor3 = Color3.fromRGB(6, 6, 10)
+	scroll.BackgroundTransparency = 0.3
 	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = 4
+	scroll.ScrollBarThickness = 8
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 200, 100)
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 6)
 	S.UI.DebugScroll = scroll
 
 	local term = Instance.new("TextLabel")
 	term.Name = "DebugTerm"
 	term.Parent = scroll
-	term.Size = UDim2.new(1, -4, 0, 0)
+	term.Size = UDim2.new(1, -12, 0, 0)
+	term.Position = UDim2.new(0, 6, 0, 4)
 	term.AutomaticSize = Enum.AutomaticSize.Y
 	term.BackgroundTransparency = 1
 	term.Font = Enum.Font.Code
 	term.Text = ""
 	term.TextColor3 = Color3.fromRGB(180, 220, 180)
-	term.TextSize = 10
+	term.TextSize = 11
 	term.TextXAlignment = Enum.TextXAlignment.Left
 	term.TextYAlignment = Enum.TextYAlignment.Top
 	term.TextWrapped = true
