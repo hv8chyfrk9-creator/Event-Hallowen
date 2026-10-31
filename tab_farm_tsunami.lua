@@ -1,86 +1,67 @@
--- tab_farm_tsunami.lua v3 - 3 raycasts fijos mundiales
+-- tab_farm_tsunami.lua v4 - seguimiento por distancia al tsunami
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then return end
 S.Farm = S.Farm or {}
 local F = S.Farm
-local player = game:GetService("Players").LocalPlayer
-local Workspace = game:GetService("Workspace")
 
 F._tsunamiHoldUntil = 0
-F._lastTsunamiScan = 0
-F._tsunamiPos = nil
-F._blueHold = false
+F._lastTsunamiDist = nil
+F._tsunamiMovingAway = false
 
 local function findTsunami()
-	local root = Workspace:FindFirstChild("NPC & Piege")
-		or Workspace:FindFirstChild("NPC & Piege", true)
-	if root then
-		local stage = root:FindFirstChild("TsunamiStage4")
-		if stage then
-			local t = stage:FindFirstChild("Tsunami")
-			if t then return t end
+	local function match(obj)
+		if not obj then return false end
+		if obj.Name == "TsunamiStage4" then return true end
+		local n = string.lower(obj.Name)
+		if string.find(n, "tsunami", 1, true) then return true end
+		return false
+	end
+	local folder = Workspace:FindFirstChild("NPC & Piege") or Workspace:FindFirstChild("NPC & Piege", true)
+	if folder then
+		for _, d in ipairs(folder:GetDescendants()) do
+			if match(d) then return d end
 		end
 	end
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if obj.Name == "Tsunami" and obj.Parent and obj.Parent.Name == "TsunamiStage4" then
-			return obj
-		end
+	for _, d in ipairs(Workspace:GetDescendants()) do
+		if match(d) then return d end
 	end
 	return nil
 end
 
-local function tsunamiWorldPos(obj)
-	if not obj then return nil end
-	if obj:IsA("BasePart") then return obj.Position end
-	local ok, pivot = pcall(function() return obj:GetPivot() end)
-	if ok and pivot then return pivot.Position end
-	local part = obj:FindFirstChildWhichIsA("BasePart", true)
-	if part then return part.Position end
-	return nil
+local function tsunamiWorldPos(t)
+	if not t then return nil end
+	if t:IsA("BasePart") then return t.Position end
+	local ok, piv = pcall(function() return t:GetPivot() end)
+	if ok and piv then return piv.Position end
+	local p = t:FindFirstChildWhichIsA("BasePart", true)
+	return p and p.Position
 end
 
-local function isTsunamiInstance(inst)
-	local cur = inst
-	for _ = 1, 12 do
-		if not cur then return false end
-		if cur.Name == "Tsunami" and cur.Parent and cur.Parent.Name == "TsunamiStage4" then return true end
-		if cur.Name == "TsunamiStage4" then return true end
-		cur = cur.Parent
-	end
-	return false
-end
-
--- 3 raycasts FIJOS en mundo (no rotan con el personaje)
-local FIXED_RAYS = {
-	{ dir = Vector3.new(-1, 0, 0), kind = "red", len = 55 },
-	{ dir = Vector3.new(0, 1, 0), kind = "blue", len = 40 },
-	{ dir = Vector3.new(1, 0, 0), kind = "blue", len = 55 },
-}
-
-local function castFixed(hrp)
-	if not hrp then return {} end
-	local origin = hrp.Position + Vector3.new(0, 2, 0)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { player.Character }
-	params.IgnoreWater = true
-	local hits = {}
-	for _, r in ipairs(FIXED_RAYS) do
-		local result = Workspace:Raycast(origin, r.dir * r.len, params)
-		if result and result.Instance and isTsunamiInstance(result.Instance) then
-			local dist = (result.Position - origin).Magnitude
-			hits[#hits + 1] = { kind = r.kind, dist = dist, pos = result.Position, dir = r.dir }
+task.spawn(function()
+	while true do
+		task.wait(0.15)
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local t = findTsunami()
+		local tPos = tsunamiWorldPos(t)
+		F._tsunamiPos = tPos
+		if hrp and tPos then
+			local d = (hrp.Position - tPos).Magnitude
+			if F._lastTsunamiDist then
+				F._tsunamiMovingAway = (d > F._lastTsunamiDist + 1.5)
+			end
+			F._lastTsunamiDist = d
+			F._tsunamiDist = d
+		else
+			F._tsunamiDist = nil
+			F._tsunamiMovingAway = false
 		end
 	end
-	local t = findTsunami()
-	local tPos = tsunamiWorldPos(t)
-	F._tsunamiPos = tPos
-	if tPos then
-		local d = (hrp.Position - tPos).Magnitude
-		hits[#hits + 1] = { kind = "pos", dist = d, pos = tPos }
-	end
-	return hits
-end
+end)
 
 function S.tsunamiDangerSpeed(hrp, baseSpeed)
 	if not hrp then return baseSpeed, false end
@@ -89,47 +70,41 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed)
 		return 0, true
 	end
 
-	local hits = castFixed(hrp)
-	local redNear, blueNear = false, false
-	local minBlue, minRed = math.huge, math.huge
-
-	for _, h in ipairs(hits) do
-		if h.kind == "red" then
-			redNear = true
-			minRed = math.min(minRed, h.dist)
-		elseif h.kind == "blue" then
-			blueNear = true
-			minBlue = math.min(minBlue, h.dist)
-		elseif h.kind == "pos" and h.dist < 30 then
-			blueNear = true
-			minBlue = math.min(minBlue, h.dist)
-		end
+	local d = F._tsunamiDist
+	local tPos = F._tsunamiPos
+	if not d or not tPos then
+		return baseSpeed, false
 	end
 
-	-- AZUL: cerca -> frenar + 0.5s al pasar
-	if blueNear and minBlue < 35 then
-		if minBlue < 22 then
-			F._tsunamiHoldUntil = now + 0.5
-			F._blueHold = true
-			return 0, true
-		end
-		return math.min(baseSpeed, 8), true
-	end
-
-	if F._blueHold and not blueNear then
-		F._blueHold = false
-		F._tsunamiHoldUntil = now + 0.5
+	-- Muy cerca (<= 20 studs): frenar
+	if d <= 20 then
+		F._tsunamiHoldUntil = now + 0.35
+		F._tsunamiSkipNext = false
 		return 0, true
 	end
 
-	-- ROJO: acelerar / saltar al siguiente CF
-	if redNear and minRed < 45 then
+	-- Zona media (20-45)
+	if d <= 45 then
+		if F._tsunamiMovingAway then
+			F._tsunamiSkipNext = true
+			return math.max(baseSpeed, math.min(500, (baseSpeed or 200) * 1.4)), true
+		end
+		F._tsunamiSkipNext = false
+		return math.min(baseSpeed or 200, 18), true
+	end
+
+	if d <= 70 and not F._tsunamiMovingAway then
+		F._tsunamiSkipNext = false
+		return math.min(baseSpeed or 200, math.max(40, (baseSpeed or 200) * 0.55)), true
+	end
+
+	if F._tsunamiMovingAway then
 		F._tsunamiSkipNext = true
-		return math.max(baseSpeed, math.min(500, baseSpeed * 1.35)), true
+		return baseSpeed, false
 	end
 
 	F._tsunamiSkipNext = false
 	return baseSpeed, false
 end
 
-print("[Delta Hub] Tsunami v3 (3 raycasts fijos) loaded")
+print("[Delta Hub] Tsunami v4 (distancia + alejamiento) loaded")
