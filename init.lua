@@ -30,7 +30,7 @@ end
 
 S.targetNamesToDestroy = {
 	"TarantulaS13", "WindZonesS14", "Lava_Stage15",
-	"MovingWallsS6", "EyeLaserStage10", "Zone", "TwompsS7",
+	"MovingWallsS6", "EyeLaserStageS10", "Zone", "TwompsS7",
 }
 
 S.routeCFrames = S.routeCFrames or {}
@@ -50,20 +50,20 @@ end
 
 S.orderedWinBlocks = {
 	{ real = "WinBlock1", display = "+1 Wins", order = 1 },
-	{ real = "WinBlock2", display = "+5 Wins", order = 2 },
+	{ real = "WinBlock2", display = "+3 Wins", order = 2 },
 	{ real = "WinBlock3", display = "+10 Wins", order = 3 },
-	{ real = "WinBlock4", display = "+25 Wins", order = 4 },
+	{ real = "WinBlock4", display = "+20 Wins", order = 4 },
 	{ real = "WinBlock5", display = "+50 Wins", order = 5 },
 	{ real = "WinBlock6", display = "+100 Wins", order = 6 },
-	{ real = "WinBlock7", display = "+250 Wins", order = 7 },
-	{ real = "WinBlock8", display = "+500 Wins", order = 8 },
-	{ real = "WinBlock9", display = "+1K Wins", order = 9 },
-	{ real = "WinBlock10", display = "+2.5K Wins", order = 10 },
-	{ real = "WinBlock11", display = "+5K Wins", order = 11 },
+	{ real = "WinBlock7", display = "+150 Wins", order = 7 },
+	{ real = "WinBlock8", display = "+300 Wins", order = 8 },
+	{ real = "WinBlock9", display = "+500 Wins", order = 9 },
+	{ real = "WinBlock10", display = "+1K Wins", order = 10 },
+	{ real = "WinBlock11", display = "+2.5K Wins", order = 11 },
 	{ real = "WinBlock12", display = "+10K Wins", order = 12 },
 	{ real = "WinBlock13", display = "+25K Wins", order = 13 },
 	{ real = "WinBlock14", display = "+50K Wins", order = 14 },
-	{ real = "WinBlock15", display = "+100K Wins", order = 15 },
+	{ real = "WinBlock15", display = "+150K Wins", order = 15 },
 }
 
 function S.waitAliveHrp(returnCf)
