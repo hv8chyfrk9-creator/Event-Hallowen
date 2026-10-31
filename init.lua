@@ -22,6 +22,7 @@ S.loadProgress = 0
 S.UI = S.UI or {}
 S.Signals = S.Signals or {}
 S.BASE_URL = BASE
+S._loadLog = {}
 
 if game.PlaceId ~= HALLOWEEN_PLACE_ID and not getgenv().DeltaHubForceLoad then
 	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId)
@@ -61,34 +62,38 @@ local function createLoadingUi()
 	gui.DisplayOrder = 2000
 	gui.Parent = playerGui
 	S.UI.LoadingGui = gui
+
 	local bg = Instance.new("Frame")
 	bg.Parent = gui
 	bg.Size = UDim2.new(1, 0, 1, 0)
 	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+
 	local title = Instance.new("TextLabel")
 	title.Parent = bg
 	title.Size = UDim2.new(1, -40, 0, 28)
-	title.Position = UDim2.new(0, 20, 0.42, 0)
+	title.Position = UDim2.new(0, 20, 0.30, 0)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
 	title.Text = "Delta Hub"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextSize = 22
+
 	local sub = Instance.new("TextLabel")
 	sub.Name = "Sub"
 	sub.Parent = bg
 	sub.Size = UDim2.new(1, -40, 0, 22)
-	sub.Position = UDim2.new(0, 20, 0.42, 34)
+	sub.Position = UDim2.new(0, 20, 0.30, 34)
 	sub.BackgroundTransparency = 1
 	sub.Font = Enum.Font.Gotham
 	sub.Text = "Iniciando..."
 	sub.TextColor3 = Color3.fromRGB(180, 180, 190)
 	sub.TextSize = 14
 	S.UI.LoadingSub = sub
+
 	local barBg = Instance.new("Frame")
 	barBg.Parent = bg
 	barBg.Size = UDim2.new(0.55, 0, 0, 12)
-	barBg.Position = UDim2.new(0.225, 0, 0.42, 68)
+	barBg.Position = UDim2.new(0.225, 0, 0.30, 68)
 	barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
 	Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 6)
 	local bar = Instance.new("Frame")
@@ -98,17 +103,51 @@ local function createLoadingUi()
 	bar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
 	S.UI.LoadingBar = bar
+
 	local pct = Instance.new("TextLabel")
 	pct.Name = "Pct"
 	pct.Parent = bg
 	pct.Size = UDim2.new(1, -40, 0, 20)
-	pct.Position = UDim2.new(0, 20, 0.42, 88)
+	pct.Position = UDim2.new(0, 20, 0.30, 88)
 	pct.BackgroundTransparency = 1
 	pct.Font = Enum.Font.GothamBold
 	pct.Text = "0.0%"
 	pct.TextColor3 = Color3.fromRGB(220, 220, 230)
 	pct.TextSize = 13
 	S.UI.LoadingPct = pct
+
+	-- Error box (visible when something fails)
+	local errBox = Instance.new("TextLabel")
+	errBox.Name = "ErrorBox"
+	errBox.Parent = bg
+	errBox.Size = UDim2.new(0.7, 0, 0, 80)
+	errBox.Position = UDim2.new(0.15, 0, 0.30, 120)
+	errBox.BackgroundColor3 = Color3.fromRGB(40, 16, 16)
+	errBox.BackgroundTransparency = 1
+	errBox.Font = Enum.Font.Gotham
+	errBox.Text = ""
+	errBox.TextColor3 = Color3.fromRGB(255, 120, 120)
+	errBox.TextSize = 13
+	errBox.TextWrapped = true
+	errBox.TextYAlignment = Enum.TextYAlignment.Top
+	errBox.Visible = false
+	Instance.new("UICorner", errBox).CornerRadius = UDim.new(0, 8)
+	S.UI.LoadingError = errBox
+
+	local okBox = Instance.new("TextLabel")
+	okBox.Name = "OkBox"
+	okBox.Parent = bg
+	okBox.Size = UDim2.new(0.7, 0, 0, 60)
+	okBox.Position = UDim2.new(0.15, 0, 0.55, 0)
+	okBox.BackgroundTransparency = 1
+	okBox.Font = Enum.Font.Code
+	okBox.Text = ""
+	okBox.TextColor3 = Color3.fromRGB(140, 200, 140)
+	okBox.TextSize = 11
+	okBox.TextXAlignment = Enum.TextXAlignment.Left
+	okBox.TextYAlignment = Enum.TextYAlignment.Top
+	okBox.TextWrapped = true
+	S.UI.LoadingOk = okBox
 end
 
 function S.setProgress(p, title, sub)
@@ -118,9 +157,41 @@ function S.setProgress(p, title, sub)
 	if S.UI.LoadingSub and sub then S.UI.LoadingSub.Text = tostring(sub) end
 end
 
+function S.reportOk(step)
+	table.insert(S._loadLog, "OK  " .. tostring(step))
+	if #S._loadLog > 12 then table.remove(S._loadLog, 1) end
+	if S.UI.LoadingOk then
+		S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n")
+	end
+	pcall(function() print("[DeltaHub OK]", step) end)
+end
+
+function S.reportError(step, detail)
+	local msg = "FALLO: " .. tostring(step)
+	if detail and detail ~= "" then msg = msg .. "\n" .. tostring(detail) end
+	table.insert(S._loadLog, "ERR " .. tostring(step))
+	if S.UI.LoadingError then
+		S.UI.LoadingError.Visible = true
+		S.UI.LoadingError.BackgroundTransparency = 0.15
+		S.UI.LoadingError.Text = msg
+	end
+	if S.UI.LoadingSub then
+		S.UI.LoadingSub.Text = "Error en: " .. tostring(step)
+		S.UI.LoadingSub.TextColor3 = Color3.fromRGB(255, 120, 120)
+	end
+	if S.UI.LoadingOk then
+		S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n")
+	end
+	pcall(function() warn("[DeltaHub ERR]", step, detail) end)
+end
+
 function S.fadeAndDestroyLoading()
 	local gui = S.UI.LoadingGui
 	if not gui then return end
+	-- no cerrar si hay error visible
+	if S.UI.LoadingError and S.UI.LoadingError.Visible and S.UI.LoadingError.Text ~= "" then
+		return
+	end
 	local bg = gui:FindFirstChildOfClass("Frame")
 	if bg then for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.06) end end
 	pcall(function() gui:Destroy() end)
@@ -129,10 +200,13 @@ end
 
 function S.httpGet(nameOrUrl)
 	local urls = {}
+	local label = tostring(nameOrUrl)
 	if type(nameOrUrl) == "string" and nameOrUrl:find("^https?://") then
-		urls = { nameOrUrl, nameOrUrl .. (nameOrUrl:find("%?") and "&" or "?") .. "t=" .. tostring(math.floor(tick())) }
+		urls = { nameOrUrl }
+		label = nameOrUrl:match("([^/]+)$") or nameOrUrl
 	else
 		local name = tostring(nameOrUrl)
+		label = name
 		urls = {
 			BASE .. name,
 			"https://cdn.jsdelivr.net/gh/" .. REPO .. "@main/" .. name,
@@ -142,9 +216,11 @@ function S.httpGet(nameOrUrl)
 	local function isValid(body)
 		return type(body) == "string" and #body >= 40 and not body:find("<!DOCTYPE") and not body:find("PLACEHOLDER")
 	end
-	for _, url in ipairs(urls) do
+	local lastErr = "sin respuesta"
+	for i, url in ipairs(urls) do
 		local ok, body = pcall(function() return game:HttpGet(url) end)
 		if ok and isValid(body) then return body end
+		lastErr = (not ok and tostring(body)) or ("len=" .. tostring(body and #body))
 		ok, body = pcall(function() return game:HttpGet(url, true) end)
 		if ok and isValid(body) then return body end
 		local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
@@ -154,10 +230,11 @@ function S.httpGet(nameOrUrl)
 				return type(res) == "table" and (res.Body or res.body) or nil
 			end)
 			if ok and isValid(body) then return body end
+			lastErr = lastErr .. " | req=" .. tostring(not ok and body or (body and #body))
 		end
 		task.wait(0.15)
 	end
-	return nil
+	return nil, label .. " -> " .. lastErr
 end
 
 function S.waitAliveHrp(returnCf)
@@ -208,28 +285,83 @@ end
 
 createLoadingUi()
 S.setProgress(2, "Init", "Preparando mundo...")
+S.reportOk("init arranco")
 
 S.routeCFrames = S.routeCFrames or {}
 S.routeModes = S.routeModes or {}
 do
 	local function loadPart(name)
-		local body = S.httpGet(name)
+		local body, err = S.httpGet(name)
 		if body then
-			local fn = loadstring(body)
-			if fn then pcall(fn) end
+			local fn, lerr = loadstring(body)
+			if fn then
+				local ok, e = pcall(fn)
+				if ok then S.reportOk(name .. " (" .. #body .. "b)")
+				else S.reportError(name .. " run", tostring(e)) end
+			else
+				S.reportError(name .. " loadstring", tostring(lerr))
+			end
+		else
+			S.reportError("descarga " .. name, err)
 		end
 	end
 	loadPart("route_data.lua")
 	loadPart("route_data_ext.lua")
 	loadPart("route_data_ext2.lua")
+	S.reportOk("CFrames: " .. tostring(#(S.routeCFrames or {})))
 end
 
--- Limpieza automática (sin menú): modo fast
-S.setProgress(10, "Init", "Limpieza del mapa...")
-local cleanupChoice = "fast"
+-- ELECCION de limpieza (vuelve a aparecer)
+S.setProgress(8, "Init", "Elige modo de limpieza...")
+local cleanupChoice = "normal"
+do
+	local gui = S.UI.LoadingGui
+	local holder = Instance.new("Frame")
+	holder.Parent = gui
+	holder.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	holder.Position = UDim2.new(0.5, -150, 0.55, 0)
+	holder.Size = UDim2.new(0, 300, 0, 168)
+	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 10)
+	local title = Instance.new("TextLabel")
+	title.Parent = holder
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -16, 0, 28)
+	title.Position = UDim2.new(0, 8, 0, 8)
+	title.Font = Enum.Font.GothamBold
+	title.Text = "Limpieza inicial"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextSize = 15
+	local chosen = nil
+	for i, opt in ipairs({
+		{ key = "normal", label = "Normal (seguro)", color = Color3.fromRGB(40, 100, 55) },
+		{ key = "fast", label = "Rapida", color = Color3.fromRGB(40, 80, 140) },
+		{ key = "super", label = "Super rapida", color = Color3.fromRGB(120, 60, 140) },
+	}) do
+		local b = Instance.new("TextButton")
+		b.Parent = holder
+		b.Size = UDim2.new(1, -20, 0, 32)
+		b.Position = UDim2.new(0, 10, 0, 56 + (i - 1) * 36)
+		b.BackgroundColor3 = opt.color
+		b.Font = Enum.Font.GothamBold
+		b.Text = opt.label
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		b.TextSize = 13
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+		b.MouseButton1Click:Connect(function() chosen = opt.key end)
+	end
+	local t0 = tick()
+	while chosen == nil and tick() - t0 < 15 do task.wait(0.1) end
+	cleanupChoice = chosen or "normal"
+	holder:Destroy()
+	S.reportOk("Limpieza: " .. cleanupChoice)
+end
+
+S.setProgress(12, "Init", "Limpiando (" .. cleanupChoice .. ")...")
 local routeForClean = select(1, S.getRouteCFramesForMode(cleanupChoice))
 if not routeForClean or #routeForClean == 0 then routeForClean = S.routeCFrames end
-local step, waitTime = 3, 0.2
+local step, waitTime = 2, 0.35
+if cleanupChoice == "fast" then step, waitTime = 3, 0.22
+elseif cleanupChoice == "super" then step, waitTime = 5, 0.15 end
 
 task.spawn(function()
 	local function getHrp()
@@ -249,7 +381,7 @@ task.spawn(function()
 			else
 				pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero; hrp.CFrame = routeForClean[i] end)
 				S.runExactCleanup()
-				S.setProgress(10 + (i / total) * 35, "Init", "Limpieza " .. i .. "/" .. total)
+				S.setProgress(12 + (i / total) * 33, "Init", "Limpieza " .. i .. "/" .. total)
 				task.wait(waitTime)
 				local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 				if h and h.Health <= 0 then getHrp(); task.wait(0.25) else i = i + step end
@@ -257,23 +389,30 @@ task.spawn(function()
 		end
 	end
 	S.runExactCleanup()
+	S.reportOk("Limpieza terminada")
 
-	S.setProgress(48, "Init", "Cargando interfaz...")
-	local body = S.httpGet("tab_farm.lua")
+	S.setProgress(48, "Init", "Cargando interfaz (tab_farm)...")
+	local body, herr = S.httpGet("tab_farm.lua")
 	if not body then
-		S.setProgress(50, "Error", "No se pudo cargar la interfaz")
+		S.setProgress(50, "Error", "No se pudo descargar tab_farm")
+		S.reportError("descarga tab_farm.lua", herr)
 		return
 	end
-	local fn, err = loadstring(body)
+	S.reportOk("tab_farm.lua (" .. #body .. "b)")
+
+	local fn, lerr = loadstring(body)
 	if not fn then
-		S.setProgress(50, "Error", "Error al preparar interfaz")
-		warn(err)
+		S.setProgress(50, "Error", "Error al preparar tab_farm")
+		S.reportError("loadstring tab_farm", tostring(lerr))
 		return
 	end
-	S.setProgress(50, "Init", "Iniciando...")
+
+	S.setProgress(50, "Init", "Ejecutando tab_farm...")
 	local ok, runErr = pcall(fn)
 	if not ok then
-		S.setProgress(50, "Error", "Error al iniciar")
-		warn(runErr)
+		S.setProgress(50, "Error", "Error al ejecutar tab_farm")
+		S.reportError("run tab_farm", tostring(runErr))
+		return
 	end
+	S.reportOk("tab_farm ejecutado")
 end)
