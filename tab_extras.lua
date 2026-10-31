@@ -35,6 +35,9 @@ local function corner(parent, r)
 	c.Parent = parent
 	return c
 end
+local function fmtNum(n)
+	return tostring(n)
+end
 
 local function makeSwitch(parent, text, order)
 	local row = Instance.new("Frame")
@@ -323,7 +326,7 @@ if not S._extrasLoopsStarted then
 				perfCard.Text = string.format("FPS: %d\nMS: %d\nMB: %d", fps, math.floor(1000 / math.max(fps, 1)), mb)
 				cardStats.Text = string.format(
 					"Wins ruta: %s\nSesion: %ds\nSpecialKeys: %d",
-					ttostring(farm.routeWinsSession or 0),
+					fmtNum(farm.routeWinsSession or 0),
 					math.floor(tick() - t0),
 					ev.specialKeyCount or 0
 				)
