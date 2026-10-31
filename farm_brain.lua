@@ -22,6 +22,9 @@ F.infinite = F.infinite or false
 F.delayTime = F.delayTime or 0
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 
+-- Espera fija al final de cada vuelta para reclamar WinBlock (NO configurable)
+local CLAIM_WAIT = 1.5
+
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
 	pcall(function() print("[Brain]", msg) end)
@@ -157,17 +160,34 @@ local function runOneLap()
 		if bv then bv.Velocity = Vector3.zero end
 	end
 
+	-- Llegamos al ultimo CFrame de la ruta (o al mas cercano al WinBlock).
+	-- Acercamiento CORTO al WinBlock (max 4s) sin quedarse atrapado en un cubo 5x5.
 	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
 	if winPos and hrp and F.routeRunning then
-		local t0 = tick()
-		while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 2 and tick() - t0 < 25 and F.routeRunning do
-			if bv then bv.Velocity = (winPos - hrp.Position).Unit * 20 end
-			RunService.Heartbeat:Wait()
+		local dist = (hrp.Position - winPos).Magnitude
+		if dist > 3 then
+			local t0 = tick()
+			while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 4 and F.routeRunning do
+				if bv and bv.Parent then
+					bv.Velocity = (winPos - hrp.Position).Unit * 20
+				else
+					bv = Instance.new("BodyVelocity")
+					bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+					bv.Parent = hrp
+				end
+				RunService.Heartbeat:Wait()
+			end
 		end
-		if bv then bv.Velocity = Vector3.zero end
-		task.wait(1.2)
 	end
+	if bv then bv.Velocity = Vector3.zero end
 	clearBV(hrp)
+
+	-- 1.5s FIJOS para reclamar el WinBlock (no se puede cambiar desde la UI).
+	-- Si el jugador puso delay entre recorridos, ese va DESPUES (en startRoute).
+	if F.routeRunning then
+		task.wait(CLAIM_WAIT)
+	end
+
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
 	return true
 end
@@ -182,14 +202,16 @@ function B.startRoute()
 		repeat
 			runOneLap()
 			if not F.routeRunning then break end
-			if F.delayTime and F.delayTime > 0 then task.wait(F.delayTime) end
+			-- delay extra del jugador (ademas de los 1.5s de claim)
+			if F.infinite and F.delayTime and F.delayTime > 0 then
+				task.wait(F.delayTime)
+			end
 		until not F.infinite or not F.routeRunning
 		B.stopRoute(false)
 	end)
 	return true
 end
 
--- Otras pestañas piden movimiento
 function B.requestMove(opts)
 	opts = opts or {}
 	if B.routeRunning then
@@ -223,16 +245,16 @@ function B.isBusy()
 	return B.busy or B.routeRunning
 end
 
--- Tsunami opcional
 task.spawn(function()
 	local base = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 	local ok, body = pcall(function() return game:HttpGet(base .. "tab_farm_tsunami.lua") end)
-	if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
-		local fn = loadstring(body)
-		if fn then pcall(fn) end
+	if ok and type(body) == "string" and #body > 50 then
+		local head = string.lower(string.sub(body, 1, 80))
+		if not string.find(head, "<html", 1, true) then
+			local fn = loadstring(body)
+			if fn then pcall(fn) end
+		end
 	end
 end)
 
-S.log = S.log or function() end
-if S.log then S.log("Cerebro listo", "OK") end
 print("[Delta Hub] farm_brain listo")
