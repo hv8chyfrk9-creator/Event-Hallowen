@@ -1,4 +1,4 @@
--- runtime_fixes.lua: parches en caliente (paginas, keycaps)
+-- runtime_fixes.lua: paginas, keycaps, candy_fix
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then return end
 local Workspace = game:GetService("Workspace")
@@ -64,5 +64,21 @@ if not S._keycapFixLoop then
 		end
 	end)
 end
+
+task.spawn(function()
+	task.wait(1)
+	local body
+	if S.httpGet then body = S.httpGet("candy_fix.lua") end
+	if not body then
+		local ok, b = pcall(function()
+			return game:HttpGet("https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/candy_fix.lua")
+		end)
+		if ok then body = b end
+	end
+	if body then
+		local fn = loadstring(body)
+		if fn then pcall(fn) end
+	end
+end)
 
 print("[Delta Hub] runtime_fixes loaded")
