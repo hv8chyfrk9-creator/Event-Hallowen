@@ -235,17 +235,28 @@ ensureHub()
 local farmPage = createScrollingPage(S.UI.ContentArea)
 farmPage.Visible = true
 S.UI.FarmPage = farmPage
+S.UI.Pages = S.UI.Pages or {}
+S.UI.Pages.Farm = farmPage
+
+local function showOnlyPage(page, title)
+	for _, p in pairs(S.UI.Pages) do
+		if typeof(p) == "Instance" then p.Visible = false end
+	end
+	if S.UI.ContentArea then
+		for _, ch in ipairs(S.UI.ContentArea:GetChildren()) do
+			if ch:IsA("ScrollingFrame") then ch.Visible = false end
+		end
+	end
+	if page then page.Visible = true end
+	if S.UI.SectionTitle and title then S.UI.SectionTitle.Text = title end
+end
+S.UI.showOnlyPage = showOnlyPage
 
 local tabFarm = makeTabButton("Farm", 1)
 tabFarm.MouseButton1Click:Connect(function()
-	for _, ch in ipairs(S.UI.ContentArea:GetChildren()) do
-		if ch:IsA("ScrollingFrame") then ch.Visible = false end
-	end
-	farmPage.Visible = true
-	if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Farm" end
+	showOnlyPage(farmPage, "Farm")
 end)
 
--- Wins
 local winsBody = section(farmPage, "Wins", 1)
 local blocks = S.orderedWinBlocks or { { real = "WinBlock1", display = "+1 Wins" } }
 local winHead = makeButton(winsBody, "  >  WinBlock: " .. (F.selectedDisplayName or "+1 Wins"), 1)
@@ -333,7 +344,6 @@ startBtn.MouseButton1Click:Connect(function()
 	Brain.startRoute()
 end)
 
--- Auto funciones
 local autoBody = section(farmPage, "Auto funciones", 2)
 local rebirthBtn = makeButton(autoBody, "Auto Rebirth: OFF", 1)
 rebirthBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
