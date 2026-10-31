@@ -118,7 +118,6 @@ local function createScrollingPage(parent)
 end
 
 setProgress(88, "Extras", "Creando pestaña...")
-
 local extrasPage = createScrollingPage(S.UI.ContentArea)
 S.UI.Pages = S.UI.Pages or {}
 S.UI.Pages.Extras = extrasPage
@@ -302,7 +301,6 @@ hitStats.MouseButton1Click:Connect(function()
 	paintStats(X.statsOn)
 	cardStats.Visible = X.statsOn
 	perfCard.Visible = X.statsOn
-	-- No se oculta la UI del juego: No Render ya tapa la pantalla
 end)
 paintStats(X.statsOn)
 
