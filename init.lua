@@ -116,7 +116,6 @@ local function createLoadingUi()
 	pct.TextSize = 13
 	S.UI.LoadingPct = pct
 
-	-- Error box (visible when something fails)
 	local errBox = Instance.new("TextLabel")
 	errBox.Name = "ErrorBox"
 	errBox.Parent = bg
@@ -137,7 +136,7 @@ local function createLoadingUi()
 	local okBox = Instance.new("TextLabel")
 	okBox.Name = "OkBox"
 	okBox.Parent = bg
-	okBox.Size = UDim2.new(0.7, 0, 0, 60)
+	okBox.Size = UDim2.new(0.7, 0, 0, 90)
 	okBox.Position = UDim2.new(0.15, 0, 0.55, 0)
 	okBox.BackgroundTransparency = 1
 	okBox.Font = Enum.Font.Code
@@ -159,10 +158,8 @@ end
 
 function S.reportOk(step)
 	table.insert(S._loadLog, "OK  " .. tostring(step))
-	if #S._loadLog > 12 then table.remove(S._loadLog, 1) end
-	if S.UI.LoadingOk then
-		S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n")
-	end
+	if #S._loadLog > 14 then table.remove(S._loadLog, 1) end
+	if S.UI.LoadingOk then S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n") end
 	pcall(function() print("[DeltaHub OK]", step) end)
 end
 
@@ -179,31 +176,40 @@ function S.reportError(step, detail)
 		S.UI.LoadingSub.Text = "Error en: " .. tostring(step)
 		S.UI.LoadingSub.TextColor3 = Color3.fromRGB(255, 120, 120)
 	end
-	if S.UI.LoadingOk then
-		S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n")
-	end
+	if S.UI.LoadingOk then S.UI.LoadingOk.Text = table.concat(S._loadLog, "\n") end
 	pcall(function() warn("[DeltaHub ERR]", step, detail) end)
 end
 
 function S.fadeAndDestroyLoading()
 	local gui = S.UI.LoadingGui
 	if not gui then return end
-	-- no cerrar si hay error visible
-	if S.UI.LoadingError and S.UI.LoadingError.Visible and S.UI.LoadingError.Text ~= "" then
-		return
-	end
+	if S.UI.LoadingError and S.UI.LoadingError.Visible and S.UI.LoadingError.Text ~= "" then return end
 	local bg = gui:FindFirstChildOfClass("Frame")
 	if bg then for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.06) end end
 	pcall(function() gui:Destroy() end)
 	S.UI.LoadingGui = nil
 end
 
+-- Solo mirar el INICIO del body (evita falso positivo si el .lua menciona DOCTYPE en el codigo)
+local function isValidLua(body)
+	if type(body) ~= "string" or #body < 30 then return false end
+	local head = string.lower(string.sub(body, 1, 120))
+	if string.find(head, "<!doctype", 1, true) then return false end
+	if string.find(head, "<html", 1, true) then return false end
+	if string.find(head, "{\"message\"", 1, true) then return false end -- github api error json
+	-- debe parecer Lua
+	if string.find(head, "local ", 1, true) or string.find(head, "--", 1, true) or string.find(head, "getgenv", 1, true) then
+		return true
+	end
+	return false
+end
+
 function S.httpGet(nameOrUrl)
 	local urls = {}
 	local label = tostring(nameOrUrl)
-	if type(nameOrUrl) == "string" and nameOrUrl:find("^https?://") then
+	if type(nameOrUrl) == "string" and string.find(nameOrUrl, "^https?://") then
 		urls = { nameOrUrl }
-		label = nameOrUrl:match("([^/]+)$") or nameOrUrl
+		label = string.match(nameOrUrl, "([^/]+)$") or nameOrUrl
 	else
 		local name = tostring(nameOrUrl)
 		label = name
@@ -213,26 +219,23 @@ function S.httpGet(nameOrUrl)
 			BASE .. name .. "?t=" .. tostring(math.floor(tick())),
 		}
 	end
-	local function isValid(body)
-		return type(body) == "string" and #body >= 40 and not body:find("<!DOCTYPE") and not body:find("PLACEHOLDER")
-	end
 	local lastErr = "sin respuesta"
-	for i, url in ipairs(urls) do
+	for _, url in ipairs(urls) do
 		local ok, body = pcall(function() return game:HttpGet(url) end)
-		if ok and isValid(body) then return body end
+		if ok and isValidLua(body) then return body end
 		lastErr = (not ok and tostring(body)) or ("len=" .. tostring(body and #body))
 		ok, body = pcall(function() return game:HttpGet(url, true) end)
-		if ok and isValid(body) then return body end
+		if ok and isValidLua(body) then return body end
 		local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
 		if type(reqFn) == "function" then
 			ok, body = pcall(function()
 				local res = reqFn({ Url = url, Method = "GET" })
 				return type(res) == "table" and (res.Body or res.body) or nil
 			end)
-			if ok and isValid(body) then return body end
+			if ok and isValidLua(body) then return body end
 			lastErr = lastErr .. " | req=" .. tostring(not ok and body or (body and #body))
 		end
-		task.wait(0.15)
+		task.wait(0.12)
 	end
 	return nil, label .. " -> " .. lastErr
 end
@@ -311,7 +314,7 @@ do
 	S.reportOk("CFrames: " .. tostring(#(S.routeCFrames or {})))
 end
 
--- ELECCION de limpieza (vuelve a aparecer)
+-- Eleccion limpieza
 S.setProgress(8, "Init", "Elige modo de limpieza...")
 local cleanupChoice = "normal"
 do

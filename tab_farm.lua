@@ -20,8 +20,11 @@ local function http(name)
 	end
 	local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 	local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
-	if ok and type(body) == "string" and #body > 40 and not body:find("<!DOCTYPE") then
-		return body
+	if ok and type(body) == "string" and #body > 40 then
+		local head = string.lower(string.sub(body, 1, 80))
+		if not string.find(head, "<html", 1, true) then
+			return body
+		end
 	end
 	return nil, "HttpGet fallo: " .. name
 end
