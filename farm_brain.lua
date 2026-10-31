@@ -29,14 +29,12 @@ local function notify(msg)
 	pcall(function() print("[Brain]", msg) end)
 end
 
--- Recompensa numerica del WinBlock seleccionado (para ignorar tsunami en <=10)
 local function selectedWinReward()
 	local name = F.selectedRealName or ""
 	local blocks = S.orderedWinBlocks or {}
 	for _, info in ipairs(blocks) do
 		if info.real == name then
 			local d = tostring(info.display or "")
-			-- "+10 Wins", "+1K Wins", etc.
 			local num = d:match("([%d%.]+)")
 			local n = tonumber(num) or 0
 			if d:upper():find("K") then n = n * 1000 end
@@ -44,7 +42,6 @@ local function selectedWinReward()
 			return n
 		end
 	end
-	-- fallback por nombre WinBlockN
 	local idx = tonumber(name:match("(%d+)")) or 99
 	local defaults = { [1]=1,[2]=3,[3]=10,[4]=20,[5]=50,[6]=100,[7]=150,[8]=300,[9]=500,[10]=1000 }
 	return defaults[idx] or 999
@@ -103,7 +100,6 @@ local function runOneLap()
 	if not hrp or not hum or hum.Health <= 0 then return false end
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(true) end
 
-	-- Wins de 10 o menos: no tsunami
 	local reward = selectedWinReward()
 	F._ignoreTsunami = (reward <= 10)
 
@@ -180,7 +176,7 @@ local function runOneLap()
 			if S.tsunamiDangerSpeed then spd = select(1, S.tsunamiDangerSpeed(hrp, spd)) end
 			if F._tsunamiSkipNext then
 				F._tsunamiSkipNext = false
-				break -- saltar al siguiente CFrame lo mas rapido posible
+				break
 			end
 			if dist > 0.05 then bv.Velocity = (targetPos - hrp.Position).Unit * spd else bv.Velocity = Vector3.zero end
 			RunService.Heartbeat:Wait()
@@ -188,10 +184,24 @@ local function runOneLap()
 		if bv then bv.Velocity = Vector3.zero end
 	end
 
-	-- SIN validacion ni persecucion del WinBlock despues de la ruta.
-	-- Solo espera fija para reclamar y listo.
-	if bv then bv.Velocity = Vector3.zero end
+	-- Empuje hacia el WinBlock (para tocarlo), SIN validar si se reclamo o no.
+	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
+	if winPos and hrp and F.routeRunning then
+		local t0 = tick()
+		while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 8 and F.routeRunning do
+			if not bv or not bv.Parent then
+				bv = Instance.new("BodyVelocity")
+				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+				bv.Parent = hrp
+			end
+			bv.Velocity = (winPos - hrp.Position).Unit * 20
+			RunService.Heartbeat:Wait()
+		end
+		if bv then bv.Velocity = Vector3.zero end
+	end
+
 	clearBV(hrp)
+	-- Solo espera fija; no revisa wins ni pregunta si se agarro
 	if F.routeRunning then
 		task.wait(CLAIM_WAIT)
 	end
