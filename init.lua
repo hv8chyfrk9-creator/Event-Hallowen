@@ -10,7 +10,6 @@ local playerGui = player:WaitForChild("PlayerGui", 10)
 if not playerGui then return end
 
 local HALLOWEEN_PLACE_ID = 128614435234859
-local NEXT_URL = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/tab_farm.lua"
 local BASE = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 local REPO = "hv8chyfrk9-creator/Event-Hallowen"
 
@@ -24,6 +23,70 @@ S.UI = S.UI or {}
 S.Signals = S.Signals or {}
 S.BASE_URL = BASE
 S._logLines = S._logLines or {}
+
+S._embeddedTabFarm = [=[-- DELTA HUB tab_farm thin loader
+local S = getgenv().DeltaHub
+if type(S) ~= "table" then return end
+
+local function setProgress(p, t, s)
+	if S.setProgress then S.setProgress(p, t, s) end
+end
+
+local function log(msg, level)
+	if S.log then S.log(msg, level or "INFO") else print("[DeltaHub]", msg) end
+end
+
+local function http(name)
+	if S.httpGet then
+		return S.httpGet(name)
+	end
+	local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+	local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
+	if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then return body end
+	return nil
+end
+
+log("tab_farm: inicio", "LOAD")
+setProgress(51, "Farm", "Cargando interfaz...")
+
+local partA = http("farm_a.lua")
+if not partA then
+	log("farm_a.lua FALLO", "ERR")
+	setProgress(52, "Error", "No se pudo cargar la interfaz")
+	return
+end
+log("farm_a OK, len=" .. tostring(#partA), "OK")
+
+setProgress(52, "Farm", "Cargando pestaña Farm...")
+local partB = http("farm_b.lua")
+if not partB then
+	log("farm_b.lua FALLO", "ERR")
+	setProgress(53, "Error", "No se pudo cargar pestaña Farm")
+	return
+end
+log("farm_b OK, len=" .. tostring(#partB), "OK")
+
+setProgress(54, "Farm", "Preparando pestaña Farm...")
+local combined = partA .. "\n" .. partB
+log("loadstring farm total=" .. tostring(#combined), "LOAD")
+local fn, err = loadstring(combined)
+if not fn then
+	log("loadstring error: " .. tostring(err), "ERR")
+	setProgress(54, "Error", "Error al preparar Farm")
+	return
+end
+
+setProgress(55, "Farm", "Iniciando pestaña Farm...")
+local ok, runErr = pcall(fn)
+if not ok then
+	log("run farm error: " .. tostring(runErr), "ERR")
+	setProgress(55, "Error", "Error al iniciar Farm")
+	return
+end
+
+log("Farm listo", "OK")
+setProgress(57, "Farm", "Pestaña Farm lista")
+]=]
 
 if game.PlaceId ~= HALLOWEEN_PLACE_ID and not getgenv().DeltaHubForceLoad then
 	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId)
@@ -39,19 +102,19 @@ function S.log(msg, level)
 	level = level or "INFO"
 	local line = string.format("[%s] %s", level, tostring(msg))
 	table.insert(S._logLines, line)
-	if #S._logLines > 120 then table.remove(S._logLines, 1) end
+	while #S._logLines > 30 do table.remove(S._logLines, 1) end
 	pcall(function()
 		local term = S.UI and S.UI.DebugTerm
 		local scroll = S.UI and S.UI.DebugScroll
-		if term then
-			term.Text = table.concat(S._logLines, "\n")
+		if not term then return end
+		term.Text = table.concat(S._logLines, "\n")
+		if scroll then
 			task.defer(function()
-				if not scroll or not scroll.Parent then return end
-				local absY = term.AbsoluteSize.Y
-				if absY < 1 then absY = #S._logLines * 14 end
-				scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(absY + 20, scroll.AbsoluteSize.Y))
-				local maxScroll = math.max(0, scroll.CanvasSize.Y.Offset - scroll.AbsoluteSize.Y)
-				scroll.CanvasPosition = Vector2.new(0, maxScroll)
+				if not scroll.Parent then return end
+				local h = 16
+				pcall(function() h = math.max(term.TextBounds.Y + 24, #S._logLines * 16) end)
+				scroll.CanvasSize = UDim2.new(0, 0, 0, h)
+				scroll.CanvasPosition = Vector2.new(0, math.max(0, h - scroll.AbsoluteSize.Y))
 			end)
 		end
 	end)
@@ -302,8 +365,8 @@ function S.httpGet(nameOrUrl)
 			S.log(string.format("OK %s (%d bytes) via %s", tostring(nameOrUrl):match("([^/]+)$") or tostring(nameOrUrl), #body, info), "OK")
 			return body
 		end
-		S.log(string.format("Fallo mirror %d: %s", i, tostring(info):sub(1, 90)), "WARN")
-		task.wait(0.2)
+		S.log(string.format("Fallo mirror %d: %s", i, tostring(info):sub(1, 80)), "WARN")
+		task.wait(0.25)
 	end
 	S.log("FALLO total: " .. tostring(nameOrUrl):sub(1, 50), "ERR")
 	return nil
@@ -483,16 +546,33 @@ task.spawn(function()
 	end
 	S.runExactCleanup()
 	S.setProgress(48, "Init", "Cargando interfaz...")
-	S.log("Descargando tab_farm.lua ...", "LOAD")
-	local body = S.httpGet("tab_farm.lua")
+	S.log("Limpieza terminada. Cargando tab_farm...", "OK")
+	task.wait(0.8)
+
+	local body = nil
+	for attempt = 1, 3 do
+		S.log("Intento " .. attempt .. "/3 tab_farm.lua", "HTTP")
+		body = S.httpGet("tab_farm.lua")
+		if body then break end
+		S.log("Reintento en 1s...", "WARN")
+		task.wait(1)
+	end
+
 	if not body then
+		S.log("HttpGet fallo. Usando loader interno...", "WARN")
+		body = S._embeddedTabFarm
+	end
+
+	if not body or #body < 40 then
 		S.setProgress(50, "Error", "No se pudo cargar la interfaz")
-		S.log("tab_farm.lua NO descargado", "ERR")
+		S.log("tab_farm NO disponible", "ERR")
 		return
 	end
+
+	S.log("tab_farm listo (" .. #body .. " bytes)", "OK")
 	local fn, err = loadstring(body)
 	if not fn then
-		S.log("loadstring tab_farm: " .. tostring(err), "ERR")
+		S.log("loadstring: " .. tostring(err), "ERR")
 		S.setProgress(50, "Error", "Error al preparar interfaz")
 		return
 	end
@@ -500,7 +580,7 @@ task.spawn(function()
 	S.log("Ejecutando tab_farm...", "LOAD")
 	local ok, runErr = pcall(fn)
 	if not ok then
-		S.log("Error tab_farm run: " .. tostring(runErr), "ERR")
+		S.log("Error tab_farm: " .. tostring(runErr), "ERR")
 		S.setProgress(50, "Error", "Error al iniciar interfaz")
 	else
 		S.log("tab_farm OK", "OK")
