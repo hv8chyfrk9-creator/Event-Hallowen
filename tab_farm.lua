@@ -1,31 +1,74 @@
 -- DELTA HUB tab_farm thin loader
--- Descarga farm_a + farm_b y los junta en UN loadstring (comparten locals)
+-- Descarga farm_a + farm_b con HttpGet robusto + mirrors
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then return end
-local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+
+local REPO = "hv8chyfrk9-creator/Event-Hallowen"
+local BRANCH = "main"
 
 local function setProgress(p, t, s)
 	if S.setProgress then S.setProgress(p, t, s) end
 end
 
-local function http(name)
-	local url = BASE .. name
+local function isValidBody(body)
+	if type(body) ~= "string" or #body < 50 then return false end
+	if body:find("<!DOCTYPE") or body:find("<html") then return false end
+	if body:find("PLACEHOLDER") then return false end
+	return true
+end
+
+local function tryHttpGet(url)
+	-- 1) game:HttpGet
 	local ok, body = pcall(function()
 		return game:HttpGet(url)
 	end)
-	if not ok then
-		warn("[Delta Hub] HttpGet error:", name, body)
-		return nil
+	if ok and isValidBody(body) then return body end
+
+	-- 2) game:HttpGet con cache bypass
+	ok, body = pcall(function()
+		return game:HttpGet(url, true)
+	end)
+	if ok and isValidBody(body) then return body end
+
+	-- 3) request / syn.request / http_request
+	local reqFn = (syn and syn.request)
+		or (http and http.request)
+		or http_request
+		or (fluxus and fluxus.request)
+		or request
+	if type(reqFn) == "function" then
+		ok, body = pcall(function()
+			local res = reqFn({
+				Url = url,
+				Method = "GET",
+				Headers = { ["User-Agent"] = "Mozilla/5.0" },
+			})
+			if type(res) == "table" then
+				return res.Body or res.body
+			end
+			return nil
+		end)
+		if ok and isValidBody(body) then return body end
 	end
-	if type(body) ~= "string" or #body < 50 then
-		warn("[Delta Hub] body vacio:", name)
-		return nil
+
+	return nil
+end
+
+local function http(name)
+	local urls = {
+		"https://raw.githubusercontent.com/" .. REPO .. "/" .. BRANCH .. "/" .. name,
+		"https://cdn.jsdelivr.net/gh/" .. REPO .. "@" .. BRANCH .. "/" .. name,
+		"https://raw.githubusercontent.com/" .. REPO .. "/" .. BRANCH .. "/" .. name .. "?t=" .. tostring(math.floor(tick())),
+	}
+	for i = 1, #urls do
+		local body = tryHttpGet(urls[i])
+		if body then
+			return body
+		end
+		task.wait(0.15)
 	end
-	if body:find("<!DOCTYPE") or body:find("PLACEHOLDER") then
-		warn("[Delta Hub] body invalido:", name)
-		return nil
-	end
-	return body
+	warn("[Delta Hub] no se pudo descargar:", name)
+	return nil
 end
 
 setProgress(51, "Farm", "Cargando interfaz...")
