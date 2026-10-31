@@ -111,18 +111,18 @@ task.spawn(function()
 	end
 end)
 
-setProgress(58, "Farm", "Cargando Player...")
+setProgress(58, "Farm", "Cargando pestaña Player...")
 
 task.spawn(function()
 	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
 	if not ok or type(body) ~= "string" or #body < 20 then
 		warn("[Delta Hub] no tab_player")
-		setProgress(62.5, "Error", "Falta tab_player")
+		setProgress(62.5, "Error", "No se pudo cargar Player")
 		return
 	end
 	local fn, err = loadstring(body)
 	if not fn then warn("[Delta Hub] tab_player load", err) return end
-	setProgress(62.5, "Farm", "Entrando a Player...")
+	setProgress(62.5, "Farm", "Iniciando pestaña Player...")
 	local okRun, runErr = pcall(fn)
 	if not okRun then warn("[Delta Hub] tab_player run", runErr) end
 end)
