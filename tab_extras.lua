@@ -5,7 +5,6 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui", 10)
@@ -22,9 +21,6 @@ local X = S.Extras
 X.renderOn = X.renderOn or false
 X.renderWhite = X.renderWhite ~= false
 X.statsOn = X.statsOn or false
-X.antiLag = X.antiLag or false
-X.antiDeco = X.antiDeco or false
-X.antiHall = X.antiHall or false
 X.antiKey = X.antiKey or false
 
 local function setProgress(p, title, sub)
@@ -126,7 +122,6 @@ setProgress(88, "Extras", "Creando pestaña...")
 local extrasPage = createScrollingPage(S.UI.ContentArea)
 S.UI.Pages = S.UI.Pages or {}
 S.UI.Pages.Extras = extrasPage
-S.UI.ExtrasPage = extrasPage
 
 local tabExtras = Instance.new("TextButton")
 tabExtras.Parent = S.UI.Sidebar
@@ -138,7 +133,6 @@ tabExtras.TextColor3 = Color3.fromRGB(255, 255, 255)
 tabExtras.TextSize = 14
 tabExtras.LayoutOrder = 4
 corner(tabExtras, 6)
-S.UI.TabExtras = tabExtras
 tabExtras.MouseButton1Click:Connect(function()
 	for _, p in pairs(S.UI.Pages) do
 		if typeof(p) == "Instance" then p.Visible = false end
@@ -159,10 +153,7 @@ end
 local function stripKeycaps()
 	for _, obj in ipairs(Workspace:GetDescendants()) do
 		if obj.Name == "KeyCaps" or (obj.Parent and obj.Parent.Name == "KeyCaps") then
-			if obj:IsA("BasePart") then
-				obj.Transparency = 1
-				obj.CanCollide = false
-			end
+			if obj:IsA("BasePart") then obj.Transparency = 1; obj.CanCollide = false end
 			for _, d in ipairs(obj:GetDescendants()) do
 				if d:IsA("BasePart") then d.Transparency = 1; d.CanCollide = false end
 			end
@@ -225,7 +216,6 @@ noRender.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 noRender.Visible = false
 noRender.ZIndex = 1
 noRender.Active = false
--- UI del script queda por encima (DisplayOrder 999)
 
 local colorRow = Instance.new("Frame")
 colorRow.Parent = screenBody
@@ -320,24 +310,22 @@ setProgress(96, "Extras", "Bucles finales...")
 if not S._extrasLoopsStarted then
 	S._extrasLoopsStarted = true
 	local t0 = tick()
-	local frames, lastFps = 0, 0
-	RunService.RenderStepped:Connect(function()
-		frames = frames + 1
-	end)
+	local frames = 0
+	RunService.RenderStepped:Connect(function() frames = frames + 1 end)
 	task.spawn(function()
 		while true do
 			task.wait(0.5)
 			if X.antiKey then stripKeycaps() end
 			if X.statsOn then
-				lastFps = frames * 2
+				local fps = frames * 2
 				frames = 0
 				local farm = S.Farm or {}
 				local ev = S.Events or {}
 				local mb = math.floor(collectgarbage("count") / 1024)
-				perfCard.Text = string.format("FPS: %d\nMS: %d\nMB: %d", lastFps, math.floor(1000 / math.max(lastFps, 1)), mb)
+				perfCard.Text = string.format("FPS: %d\nMS: %d\nMB: %d", fps, math.floor(1000 / math.max(fps, 1)), mb)
 				cardStats.Text = string.format(
 					"Wins ruta: %s\nSesion: %ds\nSpecialKeys: %d",
-					tomath and tostring(farm.routeWinsSession or 0) or tostring(farm.routeWinsSession or 0),
+					ttostring(farm.routeWinsSession or 0),
 					math.floor(tick() - t0),
 					ev.specialKeyCount or 0
 				)
