@@ -10,7 +10,11 @@ local function http(u)
 end
 local ui = http(BASE .. "events_ui.lua")
 local logic = http(BASE .. "events_logic.lua")
-if not ui then warn("[Delta Hub] falta events_ui") return end
+if not ui then
+	warn("[Delta Hub] falta events_ui, usando fallback completo")
+	ui = http(BASE .. "events_fallback.lua")
+end
+if not ui then warn("[Delta Hub] events UI missing") return end
 local body = ui .. (logic or "")
 local fn, err = loadstring(body)
 if not fn then warn("[Delta Hub] events loadstring", err) return end
