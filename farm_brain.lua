@@ -22,12 +22,32 @@ F.infinite = F.infinite or false
 F.delayTime = F.delayTime or 0
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 
--- Espera fija al final de cada vuelta para reclamar WinBlock (NO configurable)
 local CLAIM_WAIT = 1.5
 
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
 	pcall(function() print("[Brain]", msg) end)
+end
+
+-- Recompensa numerica del WinBlock seleccionado (para ignorar tsunami en <=10)
+local function selectedWinReward()
+	local name = F.selectedRealName or ""
+	local blocks = S.orderedWinBlocks or {}
+	for _, info in ipairs(blocks) do
+		if info.real == name then
+			local d = tostring(info.display or "")
+			-- "+10 Wins", "+1K Wins", etc.
+			local num = d:match("([%d%.]+)")
+			local n = tonumber(num) or 0
+			if d:upper():find("K") then n = n * 1000 end
+			if d:upper():find("M") then n = n * 1e6 end
+			return n
+		end
+	end
+	-- fallback por nombre WinBlockN
+	local idx = tonumber(name:match("(%d+)")) or 99
+	local defaults = { [1]=1,[2]=3,[3]=10,[4]=20,[5]=50,[6]=100,[7]=150,[8]=300,[9]=500,[10]=1000 }
+	return defaults[idx] or 999
 end
 
 local function approachSpeed(distance, nextDist)
@@ -67,6 +87,7 @@ function B.stopRoute(hard)
 	F.routeRunning = false
 	B.routeRunning = false
 	B.busy = false
+	F._ignoreTsunami = false
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	clearBV(hrp)
@@ -81,6 +102,10 @@ local function runOneLap()
 	local hum = char:WaitForChild("Humanoid", 5)
 	if not hrp or not hum or hum.Health <= 0 then return false end
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(true) end
+
+	-- Wins de 10 o menos: no tsunami
+	local reward = selectedWinReward()
+	F._ignoreTsunami = (reward <= 10)
 
 	local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode))
 	if not activeRoute or #activeRoute == 0 then activeRoute = S.routeCFrames end
@@ -153,41 +178,23 @@ local function runOneLap()
 			local nextD = activeRoute[i + 1] and (activeRoute[i + 1].Position - targetPos).Magnitude
 			local spd = approachSpeed(dist, nextD)
 			if S.tsunamiDangerSpeed then spd = select(1, S.tsunamiDangerSpeed(hrp, spd)) end
-			if F._tsunamiSkipNext then F._tsunamiSkipNext = false break end
+			if F._tsunamiSkipNext then
+				F._tsunamiSkipNext = false
+				break -- saltar al siguiente CFrame lo mas rapido posible
+			end
 			if dist > 0.05 then bv.Velocity = (targetPos - hrp.Position).Unit * spd else bv.Velocity = Vector3.zero end
 			RunService.Heartbeat:Wait()
 		end
 		if bv then bv.Velocity = Vector3.zero end
 	end
 
-	-- Llegamos al ultimo CFrame de la ruta (o al mas cercano al WinBlock).
-	-- Acercamiento CORTO al WinBlock (max 4s) sin quedarse atrapado en un cubo 5x5.
-	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
-	if winPos and hrp and F.routeRunning then
-		local dist = (hrp.Position - winPos).Magnitude
-		if dist > 3 then
-			local t0 = tick()
-			while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 4 and F.routeRunning do
-				if bv and bv.Parent then
-					bv.Velocity = (winPos - hrp.Position).Unit * 20
-				else
-					bv = Instance.new("BodyVelocity")
-					bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-					bv.Parent = hrp
-				end
-				RunService.Heartbeat:Wait()
-			end
-		end
-	end
+	-- SIN validacion ni persecucion del WinBlock despues de la ruta.
+	-- Solo espera fija para reclamar y listo.
 	if bv then bv.Velocity = Vector3.zero end
 	clearBV(hrp)
-
-	-- 1.5s FIJOS para reclamar el WinBlock (no se puede cambiar desde la UI).
-	-- Si el jugador puso delay entre recorridos, ese va DESPUES (en startRoute).
 	if F.routeRunning then
 		task.wait(CLAIM_WAIT)
 	end
-
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
 	return true
 end
@@ -202,7 +209,6 @@ function B.startRoute()
 		repeat
 			runOneLap()
 			if not F.routeRunning then break end
-			-- delay extra del jugador (ademas de los 1.5s de claim)
 			if F.infinite and F.delayTime and F.delayTime > 0 then
 				task.wait(F.delayTime)
 			end
