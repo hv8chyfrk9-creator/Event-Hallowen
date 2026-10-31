@@ -1,4 +1,4 @@
--- DELTA HUB tab_farm thin loader
+-- DELTA HUB tab_farm: carga CEREBRO y UI por separado (2 chunks)
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then return end
 
@@ -6,57 +6,59 @@ local function setProgress(p, t, s)
 	if S.setProgress then S.setProgress(p, t, s) end
 end
 
-local function log(msg, level)
-	if S.log then S.log(msg, level or "INFO") else print("[DeltaHub]", msg) end
-end
-
 local function http(name)
-	if S.httpGet then
-		return S.httpGet(name)
-	end
+	if S.httpGet then return S.httpGet(name) end
 	local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 	local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
-	if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then return body end
+	if ok and type(body) == "string" and #body > 40 and not body:find("<!DOCTYPE") then return body end
 	return nil
 end
 
-log("tab_farm: inicio", "LOAD")
-setProgress(51, "Farm", "Cargando interfaz...")
-
-local partA = http("farm_a.lua")
-if not partA then
-	log("farm_a.lua FALLO", "ERR")
-	setProgress(52, "Error", "No se pudo cargar la interfaz")
-	return
-end
-log("farm_a OK, len=" .. tostring(#partA), "OK")
-
-setProgress(52, "Farm", "Cargando pestaña Farm...")
-local partB = http("farm_b.lua")
-if not partB then
-	log("farm_b.lua FALLO", "ERR")
-	setProgress(53, "Error", "No se pudo cargar pestaña Farm")
-	return
-end
-log("farm_b OK, len=" .. tostring(#partB), "OK")
-
-setProgress(54, "Farm", "Preparando pestaña Farm...")
-local combined = partA .. "\n" .. partB
-log("loadstring farm total=" .. tostring(#combined), "LOAD")
-local fn, err = loadstring(combined)
-if not fn then
-	log("loadstring error: " .. tostring(err), "ERR")
-	setProgress(54, "Error", "Error al preparar Farm")
-	return
+local function runFile(name, label, pct)
+	setProgress(pct, "Farm", label)
+	local body = http(name)
+	if not body then
+		warn("[Delta Hub] no", name)
+		setProgress(pct, "Error", "No se pudo cargar: " .. label)
+		return false
+	end
+	local fn, err = loadstring(body)
+	if not fn then
+		warn("[Delta Hub] loadstring", name, err)
+		setProgress(pct, "Error", "Error: " .. label)
+		return false
+	end
+	local ok, runErr = pcall(fn)
+	if not ok then
+		warn("[Delta Hub] run", name, runErr)
+		setProgress(pct, "Error", "Error al iniciar: " .. label)
+		return false
+	end
+	return true
 end
 
-setProgress(55, "Farm", "Iniciando pestaña Farm...")
-local ok, runErr = pcall(fn)
-if not ok then
-	log("run farm error: " .. tostring(runErr), "ERR")
-	setProgress(55, "Error", "Error al iniciar Farm")
-	return
+-- 1) Cerebro (movimiento) — chunk propio
+if not runFile("farm_brain.lua", "Cargando sistema de movimiento...", 51) then return end
+
+-- 2) UI Farm — otro chunk
+if not runFile("farm_ui.lua", "Cargando pestaña Farm...", 54) then
+	-- fallback UI antigua si farm_ui no existe
+	if not runFile("farm_a.lua", "Cargando interfaz (fallback)...", 54) then return end
 end
 
-log("Farm listo", "OK")
-setProgress(57, "Farm", "Pestaña Farm lista")
+setProgress(58, "Farm", "Pestaña Farm lista")
+
+-- Encadenar Player
+task.spawn(function()
+	task.wait(0.2)
+	setProgress(60, "Farm", "Cargando pestaña Player...")
+	local body = http("tab_player.lua")
+	if not body then
+		setProgress(62, "Error", "No se pudo cargar Player")
+		return
+	end
+	local fn, err = loadstring(body)
+	if not fn then warn("[Delta Hub] tab_player", err) return end
+	setProgress(63, "Farm", "Iniciando Player...")
+	pcall(fn)
+end)
