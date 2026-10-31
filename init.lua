@@ -12,6 +12,7 @@ if not playerGui then return end
 local HALLOWEEN_PLACE_ID = 128614435234859
 local NEXT_URL = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/tab_farm.lua"
 local BASE = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+local REPO = "hv8chyfrk9-creator/Event-Hallowen"
 
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then S = {}; getgenv().DeltaHub = S end
@@ -22,6 +23,7 @@ S.loadProgress = 0
 S.UI = S.UI or {}
 S.Signals = S.Signals or {}
 S.BASE_URL = BASE
+S._logLines = S._logLines or {}
 
 if game.PlaceId ~= HALLOWEEN_PLACE_ID and not getgenv().DeltaHubForceLoad then
 	warn("[Delta Hub] PlaceId incorrecto:", game.PlaceId)
@@ -33,19 +35,207 @@ S.targetNamesToDestroy = {
 	"MovingWallsS6", "EyeLaserStageS10", "Zone", "TwompsS7",
 }
 
-S.routeCFrames = S.routeCFrames or {}
-S.routeModes = S.routeModes or {}
-do
-	local function loadPart(name)
-		local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
-		if ok and type(body) == "string" and #body > 50 and not body:find("<!DOCTYPE") then
-			local fn = loadstring(body)
-			if fn then pcall(fn) end
-		end
+function S.log(msg, level)
+	level = level or "INFO"
+	local line = string.format("[%s] %s", level, tostring(msg))
+	table.insert(S._logLines, line)
+	if #S._logLines > 80 then table.remove(S._logLines, 1) end
+	pcall(function()
+		local term = S.UI and S.UI.DebugTerm
+		if term then term.Text = table.concat(S._logLines, "\n") end
+	end)
+	pcall(function() print("[DeltaHub]", line) end)
+end
+
+local function createLoadingUi()
+	local old = playerGui:FindFirstChild("DeltaHubLoadingGui")
+	if old then old:Destroy() end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "DeltaHubLoadingGui"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 2000
+	gui.Parent = playerGui
+	S.UI.LoadingGui = gui
+
+	local bg = Instance.new("Frame")
+	bg.Parent = gui
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+
+	local title = Instance.new("TextLabel")
+	title.Parent = bg
+	title.Size = UDim2.new(0.55, 0, 0, 28)
+	title.Position = UDim2.new(0.05, 0, 0.42, 0)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.Text = "Delta Hub"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextSize = 20
+	title.TextXAlignment = Enum.TextXAlignment.Left
+
+	local sub = Instance.new("TextLabel")
+	sub.Name = "Sub"
+	sub.Parent = bg
+	sub.Size = UDim2.new(0.55, 0, 0, 22)
+	sub.Position = UDim2.new(0.05, 0, 0.42, 32)
+	sub.BackgroundTransparency = 1
+	sub.Font = Enum.Font.Gotham
+	sub.Text = "Iniciando..."
+	sub.TextColor3 = Color3.fromRGB(180, 180, 190)
+	sub.TextSize = 13
+	sub.TextXAlignment = Enum.TextXAlignment.Left
+	S.UI.LoadingSub = sub
+
+	local barBg = Instance.new("Frame")
+	barBg.Parent = bg
+	barBg.Size = UDim2.new(0.5, 0, 0, 10)
+	barBg.Position = UDim2.new(0.05, 0, 0.42, 64)
+	barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+	Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 4)
+	local bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.Parent = barBg
+	bar.Size = UDim2.new(0, 0, 1, 0)
+	bar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 4)
+	S.UI.LoadingBar = bar
+
+	local pct = Instance.new("TextLabel")
+	pct.Name = "Pct"
+	pct.Parent = bg
+	pct.Size = UDim2.new(0.5, 0, 0, 20)
+	pct.Position = UDim2.new(0.05, 0, 0.42, 80)
+	pct.BackgroundTransparency = 1
+	pct.Font = Enum.Font.GothamBold
+	pct.Text = "0.0%"
+	pct.TextColor3 = Color3.fromRGB(220, 220, 230)
+	pct.TextSize = 12
+	pct.TextXAlignment = Enum.TextXAlignment.Left
+	S.UI.LoadingPct = pct
+
+	local termFrame = Instance.new("Frame")
+	termFrame.Name = "DebugTermFrame"
+	termFrame.Parent = bg
+	termFrame.Size = UDim2.new(0.38, 0, 0.7, 0)
+	termFrame.Position = UDim2.new(0.60, 0, 0.15, 0)
+	termFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
+	termFrame.BorderSizePixel = 0
+	Instance.new("UICorner", termFrame).CornerRadius = UDim.new(0, 8)
+	local stroke = Instance.new("UIStroke")
+	stroke.Parent = termFrame
+	stroke.Color = Color3.fromRGB(50, 50, 60)
+	stroke.Thickness = 1
+
+	local termTitle = Instance.new("TextLabel")
+	termTitle.Parent = termFrame
+	termTitle.Size = UDim2.new(1, -12, 0, 22)
+	termTitle.Position = UDim2.new(0, 6, 0, 4)
+	termTitle.BackgroundTransparency = 1
+	termTitle.Font = Enum.Font.GothamBold
+	termTitle.Text = "Terminal / Debug"
+	termTitle.TextColor3 = Color3.fromRGB(120, 200, 120)
+	termTitle.TextSize = 11
+	termTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Parent = termFrame
+	scroll.Size = UDim2.new(1, -12, 1, -32)
+	scroll.Position = UDim2.new(0, 6, 0, 28)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 4
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	S.UI.DebugScroll = scroll
+
+	local term = Instance.new("TextLabel")
+	term.Name = "DebugTerm"
+	term.Parent = scroll
+	term.Size = UDim2.new(1, -4, 0, 0)
+	term.AutomaticSize = Enum.AutomaticSize.Y
+	term.BackgroundTransparency = 1
+	term.Font = Enum.Font.Code
+	term.Text = ""
+	term.TextColor3 = Color3.fromRGB(180, 220, 180)
+	term.TextSize = 10
+	term.TextXAlignment = Enum.TextXAlignment.Left
+	term.TextYAlignment = Enum.TextYAlignment.Top
+	term.TextWrapped = true
+	S.UI.DebugTerm = term
+end
+
+function S.setProgress(p, title, sub)
+	if p ~= nil then S.loadProgress = math.clamp(tonumber(p) or 0, 0, 100) end
+	if S.UI.LoadingBar then S.UI.LoadingBar.Size = UDim2.new((S.loadProgress or 0) / 100, 0, 1, 0) end
+	if S.UI.LoadingPct then S.UI.LoadingPct.Text = string.format("%.1f%%", S.loadProgress or 0) end
+	if S.UI.LoadingSub and sub then S.UI.LoadingSub.Text = tostring(sub) end
+	if sub then S.log(string.format("%.1f%% | %s", S.loadProgress or 0, tostring(sub)), "LOAD") end
+end
+
+function S.fadeAndDestroyLoading()
+	local gui = S.UI.LoadingGui
+	if not gui then return end
+	S.log("Carga completa. Cerrando pantalla...", "OK")
+	task.wait(0.6)
+	local bg = gui:FindFirstChildOfClass("Frame")
+	if bg then for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.08) end end
+	pcall(function() gui:Destroy() end)
+	S.UI.LoadingGui = nil
+	S.UI.DebugTerm = nil
+end
+
+function S.httpGet(nameOrUrl)
+	local urls = {}
+	if type(nameOrUrl) == "string" and nameOrUrl:find("^https?://") then
+		urls = { nameOrUrl, nameOrUrl .. (nameOrUrl:find("%?") and "&" or "?") .. "t=" .. tostring(math.floor(tick())) }
+		local path = nameOrUrl:match("raw%.githubusercontent%.com/[^/]+/[^/]+/[^/]+/(.+)$")
+		if path then table.insert(urls, 2, "https://cdn.jsdelivr.net/gh/" .. REPO .. "@main/" .. path) end
+	else
+		local name = tostring(nameOrUrl)
+		urls = {
+			BASE .. name,
+			"https://cdn.jsdelivr.net/gh/" .. REPO .. "@main/" .. name,
+			BASE .. name .. "?t=" .. tostring(math.floor(tick())),
+		}
 	end
-	loadPart("route_data.lua")
-	loadPart("route_data_ext.lua")
-	loadPart("route_data_ext2.lua")
+	local function isValid(body)
+		if type(body) ~= "string" or #body < 40 then return false end
+		if body:find("<!DOCTYPE") or body:find("<html") then return false end
+		if body:find("PLACEHOLDER") then return false end
+		return true
+	end
+	local function tryOne(url)
+		local ok, body = pcall(function() return game:HttpGet(url) end)
+		if ok and isValid(body) then return body, "HttpGet" end
+		local err1 = not ok and tostring(body) or ("len=" .. tostring(body and #body))
+		ok, body = pcall(function() return game:HttpGet(url, true) end)
+		if ok and isValid(body) then return body, "HttpGet/true" end
+		local err2 = not ok and tostring(body) or ("len=" .. tostring(body and #body))
+		local reqFn = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+		if type(reqFn) == "function" then
+			ok, body = pcall(function()
+				local res = reqFn({ Url = url, Method = "GET", Headers = { ["User-Agent"] = "Mozilla/5.0" } })
+				if type(res) == "table" then return res.Body or res.body end
+				return nil
+			end)
+			if ok and isValid(body) then return body, "request" end
+			err2 = err2 .. " | req=" .. tostring(not ok and body or (body and #body))
+		end
+		return nil, err1 .. " / " .. err2
+	end
+	S.log("Descargando: " .. tostring(nameOrUrl):sub(1, 60), "HTTP")
+	for i, url in ipairs(urls) do
+		local body, info = tryOne(url)
+		if body then
+			S.log(string.format("OK %s (%d bytes) via %s", tostring(nameOrUrl):match("([^/]+)$") or tostring(nameOrUrl), #body, info), "OK")
+			return body
+		end
+		S.log(string.format("Fallo mirror %d: %s", i, tostring(info):sub(1, 90)), "WARN")
+		task.wait(0.2)
+	end
+	S.log("FALLO total: " .. tostring(nameOrUrl):sub(1, 50), "ERR")
+	return nil
 end
 
 S.orderedWinBlocks = {
@@ -99,97 +289,48 @@ function S.getRouteIndicesForMode(mode)
 	if mode == "fast" then key = "fast"
 	elseif mode == "ultra" or mode == "super" then key = "super" end
 	local frames, modes, idxs = S.routeCFrames, S.routeModes, {}
-	for i = 1, #frames do
+	for i = 1, #(frames or {}) do
 		local m = modes[i]
 		if not m or m[key] then idxs[#idxs + 1] = i end
 	end
-	if #idxs == 0 then for i = 1, #frames do idxs[i] = i end end
+	if #idxs == 0 then for i = 1, #(frames or {}) do idxs[i] = i end end
 	return idxs
 end
 
 function S.getRouteCFramesForMode(mode)
 	local idxs = S.getRouteIndicesForMode(mode)
-	local frames, list = S.routeCFrames, {}
+	local frames, list = S.routeCFrames or {}, {}
 	for i = 1, #idxs do list[i] = frames[idxs[i]] end
 	return list, idxs
 end
 
-local function createLoadingUi()
-	local old = playerGui:FindFirstChild("DeltaHubLoadingGui")
-	if old then old:Destroy() end
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "DeltaHubLoadingGui"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 2000
-	gui.Parent = playerGui
-	S.UI.LoadingGui = gui
-	local bg = Instance.new("Frame")
-	bg.Parent = gui
-	bg.Size = UDim2.new(1, 0, 1, 0)
-	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
-	local title = Instance.new("TextLabel")
-	title.Parent = bg
-	title.Size = UDim2.new(1, -40, 0, 28)
-	title.Position = UDim2.new(0, 20, 0.42, 0)
-	title.BackgroundTransparency = 1
-	title.Font = Enum.Font.GothamBold
-	title.Text = "Delta Hub"
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextSize = 20
-	local sub = Instance.new("TextLabel")
-	sub.Name = "Sub"
-	sub.Parent = bg
-	sub.Size = UDim2.new(1, -40, 0, 22)
-	sub.Position = UDim2.new(0, 20, 0.42, 32)
-	sub.BackgroundTransparency = 1
-	sub.Font = Enum.Font.Gotham
-	sub.Text = "Iniciando..."
-	sub.TextColor3 = Color3.fromRGB(180, 180, 190)
-	sub.TextSize = 13
-	S.UI.LoadingSub = sub
-	local barBg = Instance.new("Frame")
-	barBg.Parent = bg
-	barBg.Size = UDim2.new(0.6, 0, 0, 10)
-	barBg.Position = UDim2.new(0.2, 0, 0.42, 64)
-	barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-	local bar = Instance.new("Frame")
-	bar.Name = "Bar"
-	bar.Parent = barBg
-	bar.Size = UDim2.new(0, 0, 1, 0)
-	bar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	S.UI.LoadingBar = bar
-	local pct = Instance.new("TextLabel")
-	pct.Name = "Pct"
-	pct.Parent = bg
-	pct.Size = UDim2.new(1, -40, 0, 20)
-	pct.Position = UDim2.new(0, 20, 0.42, 80)
-	pct.BackgroundTransparency = 1
-	pct.Font = Enum.Font.GothamBold
-	pct.Text = "0.0%"
-	pct.TextColor3 = Color3.fromRGB(220, 220, 230)
-	pct.TextSize = 12
-	S.UI.LoadingPct = pct
-end
-
-function S.setProgress(p, title, sub)
-	if p ~= nil then S.loadProgress = math.clamp(tonumber(p) or 0, 0, 100) end
-	if S.UI.LoadingBar then S.UI.LoadingBar.Size = UDim2.new((S.loadProgress or 0) / 100, 0, 1, 0) end
-	if S.UI.LoadingPct then S.UI.LoadingPct.Text = string.format("%.1f%%", S.loadProgress or 0) end
-	if S.UI.LoadingSub and sub then S.UI.LoadingSub.Text = tostring(sub) end
-end
-
-function S.fadeAndDestroyLoading()
-	local gui = S.UI.LoadingGui
-	if not gui then return end
-	local bg = gui:FindFirstChildOfClass("Frame")
-	if bg then for i = 0, 10 do bg.BackgroundTransparency = i / 10; task.wait(0.08) end end
-	pcall(function() gui:Destroy() end)
-	S.UI.LoadingGui = nil
-end
-
 createLoadingUi()
+S.log("Delta Hub init iniciado", "OK")
+S.log("PlaceId=" .. tostring(game.PlaceId), "INFO")
 S.setProgress(2, "Init", "Preparando mundo...")
+
+S.routeCFrames = S.routeCFrames or {}
+S.routeModes = S.routeModes or {}
+do
+	local function loadPart(name)
+		S.log("Ruta: " .. name, "LOAD")
+		local body = S.httpGet(name)
+		if body then
+			local fn, err = loadstring(body)
+			if fn then
+				local ok, e = pcall(fn)
+				if not ok then S.log("Error ruta " .. name .. ": " .. tostring(e), "ERR") end
+			else
+				S.log("loadstring ruta: " .. tostring(err), "ERR")
+			end
+		end
+	end
+	loadPart("route_data.lua")
+	loadPart("route_data_ext.lua")
+	loadPart("route_data_ext2.lua")
+	S.log("CFrames cargados: " .. tostring(#(S.routeCFrames or {})), "OK")
+end
+
 S.setProgress(8, "Init", "Limpieza del mapa...")
 
 local cleanupChoice = "normal"
@@ -198,8 +339,8 @@ do
 	local holder = Instance.new("Frame")
 	holder.Parent = gui
 	holder.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-	holder.Position = UDim2.new(0.5, -160, 0.55, 0)
-	holder.Size = UDim2.new(0, 320, 0, 168)
+	holder.Position = UDim2.new(0.05, 0, 0.55, 0)
+	holder.Size = UDim2.new(0, 280, 0, 168)
 	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 10)
 	local title = Instance.new("TextLabel")
 	title.Parent = holder
@@ -232,6 +373,7 @@ do
 	while chosen == nil and tick() - t0 < 12 do task.wait(0.1) end
 	cleanupChoice = chosen or "normal"
 	holder:Destroy()
+	S.log("Limpieza elegida: " .. cleanupChoice, "OK")
 end
 
 S.setProgress(12, "Init", "Limpiando (" .. cleanupChoice .. ")...")
@@ -252,6 +394,7 @@ task.spawn(function()
 	end
 	local hrp = getHrp()
 	local total = (routeForClean and #routeForClean) or 0
+	S.log("Limpieza frames: " .. tostring(total) .. " step=" .. tostring(step), "INFO")
 	if hrp and routeForClean and total > 0 then
 		local i = 1
 		while i <= total do
@@ -269,10 +412,26 @@ task.spawn(function()
 	end
 	S.runExactCleanup()
 	S.setProgress(48, "Init", "Cargando interfaz...")
-	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
-	if not ok or type(body) ~= "string" or #body < 20 then S.setProgress(50, "Error", "No se pudo cargar la interfaz"); return end
-	local fn = loadstring(body)
-	if not fn then return end
+	S.log("Descargando tab_farm.lua ...", "LOAD")
+	local body = S.httpGet("tab_farm.lua")
+	if not body then
+		S.setProgress(50, "Error", "No se pudo cargar la interfaz")
+		S.log("tab_farm.lua NO descargado", "ERR")
+		return
+	end
+	local fn, err = loadstring(body)
+	if not fn then
+		S.log("loadstring tab_farm: " .. tostring(err), "ERR")
+		S.setProgress(50, "Error", "Error al preparar interfaz")
+		return
+	end
 	S.setProgress(50, "Init", "Iniciando interfaz...")
-	pcall(fn)
+	S.log("Ejecutando tab_farm...", "LOAD")
+	local ok, runErr = pcall(fn)
+	if not ok then
+		S.log("Error tab_farm run: " .. tostring(runErr), "ERR")
+		S.setProgress(50, "Error", "Error al iniciar interfaz")
+	else
+		S.log("tab_farm OK", "OK")
+	end
 end)
