@@ -1,6 +1,7 @@
 -- tab_farm_tsunami.lua v9
--- Hold: CF del +10 = uno ANTES del mas cercano real
--- Fast hold = ese CF (no el siguiente)
+-- Hold:
+--   normal: CF uno antes del mas cercano al +10
+--   fast:   el CF mas cercano al +10
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
@@ -96,17 +97,17 @@ local function getRouteModes()
 	return S.routeModes or {}
 end
 
--- Índice más cercano al +10, luego ATRASAMOS 1 (usuario)
+-- Devuelve: closest (real), holdNormal = closest-1
 local function computeCf10Index(route)
 	local pos10 = select(1, findPlus10WinPos())
-	if not pos10 or not route or #route == 0 then return nil end
+	if not pos10 or not route or #route == 0 then return nil, nil end
 	local bestI, bestD = 1, math.huge
 	for i = 1, #route do
 		local d = (route[i].Position - pos10).Magnitude
 		if d < bestD then bestD, bestI = d, i end
 	end
-	-- uno antes del más cercano
-	return math.max(1, bestI - 1), pos10
+	local holdNormal = math.max(1, bestI - 1)
+	return bestI, holdNormal
 end
 
 local function classifyTsunamiVsRoute(tPos, route)
@@ -114,11 +115,10 @@ local function classifyTsunamiVsRoute(tPos, route)
 	local modes = getRouteModes()
 	local onNormal, onFast = false, false
 	local full = S.routeCFrames or route
-	local fullModes = modes
 	for i = 1, #full do
 		local cf = full[i]
 		if cf and (cf.Position - tPos).Magnitude <= NEAR_CF then
-			local m = fullModes[i]
+			local m = modes[i]
 			if m then
 				if m.normal then onNormal = true end
 				if m.fast then onFast = true end
@@ -127,13 +127,7 @@ local function classifyTsunamiVsRoute(tPos, route)
 			end
 		end
 	end
-	for i = 1, #route do
-		if (route[i].Position - tPos).Magnitude <= NEAR_CF then
-			onNormal = onNormal or true
-		end
-	end
-	local onlyFast = onFast and not onNormal
-	return onNormal, onlyFast
+	return onNormal, (onFast and not onNormal)
 end
 
 task.spawn(function()
@@ -183,41 +177,30 @@ task.spawn(function()
 			F._tsunamiOnNormal = onN
 			F._tsunamiOnFastOnly = onlyF
 
-			local idx10 = computeCf10Index(route)
-			F._cf10Index = idx10
+			local closest, holdNormal = computeCf10Index(route)
+			F._cf10Index = holdNormal
 
 			F._holdAtIndex = nil
 			F._forceHoldPos = nil
-			if idx10 and route and F.routeRunning and not F._ignoreTsunami then
-				local playerBefore10 = true
+			if closest and holdNormal and route and F.routeRunning and not F._ignoreTsunami then
+				local playerBefore = true
 				if hrp then
 					local bestI, bestD = 1, math.huge
 					for i = 1, #route do
 						local d = (route[i].Position - hrp.Position).Magnitude
 						if d < bestD then bestD, bestI = d, i end
 					end
-					playerBefore10 = bestI <= idx10
+					playerBefore = bestI <= closest
 				end
 
-				if playerBefore10 then
+				if playerBefore then
 					if onN then
-						-- normal → hold en CF atrasado (idx10 ya es -1)
-						F._holdAtIndex = idx10
-						F._forceHoldPos = route[idx10].Position
+						F._holdAtIndex = holdNormal
+						F._forceHoldPos = route[holdNormal].Position
 					elseif onlyF then
-						-- fast → hold en el CF del +10 (sin +1; ya atrasado)
-						-- usuario: tambien atrasar el de fast → mismo idx10 es el correcto
-						-- si quiere uno mas: idx10; si antes era idx10+1 ahora es idx10
-						local holdI = math.min(idx10 + 1, #route) -- siguiente al atrasado = el "viejo" +10
-						-- usuario dijo atrasar los 2: el de fast tambien uno antes
-						-- antes fast era (closest)+1; closest ahora es closest-1; fast ahora = closest
-						holdI = idx10
-						if holdI < #route then holdI = math.min(idx10 + 1, #route) end
-						-- Interpretacion clara: normal=idx10, fast=idx10+1 pero idx10 ya -1 del closest
-						-- = normal: closest-1, fast: closest
-						holdI = math.min(idx10 + 1, #route)
-						F._holdAtIndex = holdI
-						F._forceHoldPos = route[holdI].Position
+						-- fast: el mas cercano real (atrasado respecto al viejo closest+1)
+						F._holdAtIndex = closest
+						F._forceHoldPos = route[closest].Position
 					end
 				end
 			end
@@ -283,4 +266,4 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	return baseSpeed, false
 end
 
-print("[Delta Hub] Tsunami v9 (hold CF-1)")
+print("[Delta Hub] Tsunami v9 (hold CF-1 limpio)")
