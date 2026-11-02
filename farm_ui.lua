@@ -67,7 +67,7 @@ local function ensureHub()
 	main.Size = UDim2.new(0, 400, 0, 360)
 	main.Active = true
 	main.Draggable = true
-	main.Visible = false
+	main.Visible = true -- visible desde el inicio
 	corner(main, 10)
 	S.UI.MainFrame = main
 
@@ -106,7 +106,7 @@ local function ensureHub()
 	side.BackgroundTransparency = 1
 	side.Size = UDim2.new(0, 92, 0, 220)
 	side.Position = UDim2.new(0.5, -310, 0.5, -100)
-	side.Visible = false
+	side.Visible = true -- visible
 	S.UI.Sidebar = side
 	local sideLay = Instance.new("UIListLayout")
 	sideLay.Parent = side
@@ -408,6 +408,11 @@ task.spawn(function()
 		end
 	end
 end)
+
+-- Asegurar UI visible al terminar
+if S.UI.MainFrame then S.UI.MainFrame.Visible = true end
+if S.UI.Sidebar then S.UI.Sidebar.Visible = true end
+if S.UI.FloatingLogo then S.UI.FloatingLogo.Visible = false end
 
 setProgress(57, "Farm", "Pestaña Farm lista")
 print("[Delta Hub] farm_ui listo")
