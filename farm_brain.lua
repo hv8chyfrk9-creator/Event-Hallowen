@@ -1,4 +1,4 @@
--- DELTA HUB farm_brain: unico dueño del movimiento
+-- DELTA HUB farm_brain Halloween (hitbox 20x20x20, sin CLAIM_WAIT fijo)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -22,7 +22,7 @@ F.infinite = F.infinite or false
 F.delayTime = F.delayTime or 0
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 
-local CLAIM_WAIT = 1.5
+B.pendingEvent = nil
 
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
@@ -80,10 +80,43 @@ local function clearBV(hrp)
 	hrp.AssemblyLinearVelocity = Vector3.zero
 end
 
+-- Hitbox 20x20x20 no colisionable en el primer CFrame
+local function ensureStartHitbox(cf)
+	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "DeltaHubHWHitbox"
+		folder.Parent = Workspace
+	end
+	local box = folder:FindFirstChild("StartFinishBox")
+	if not box then
+		box = Instance.new("Part")
+		box.Name = "StartFinishBox"
+		box.Size = Vector3.new(20, 20, 20)
+		box.Anchored = true
+		box.CanCollide = false
+		box.CanQuery = true
+		box.CanTouch = false
+		box.Transparency = 1
+		box.Parent = folder
+	end
+	box.Size = Vector3.new(20, 20, 20)
+	box.CFrame = cf
+	return box
+end
+
+local function playerInHitbox(hrp, box)
+	if not hrp or not box or not box.Parent then return false end
+	local rel = box.CFrame:PointToObjectSpace(hrp.Position)
+	local half = box.Size * 0.5
+	return math.abs(rel.X) <= half.X and math.abs(rel.Y) <= half.Y and math.abs(rel.Z) <= half.Z
+end
+
 function B.stopRoute(hard)
 	F.routeRunning = false
 	B.routeRunning = false
 	B.busy = false
+	B._leftStartBox = false
 	F._ignoreTsunami = false
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -91,6 +124,40 @@ function B.stopRoute(hard)
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(false) end
 	if hard then notify("Recorrido detenido") end
+end
+
+function B.reportFoundEvent(data)
+	if type(data) ~= "table" then return end
+	if not data.pos and data.cf then data.pos = data.cf.Position end
+	if not data.pos then return end
+	B.pendingEvent = data
+	notify("Evento guardado para después del recorrido")
+end
+
+local function goCollectPending()
+	local pend = B.pendingEvent
+	B.pendingEvent = nil
+	if not pend or not pend.pos then return false end
+	local stillThere = true
+	if pend.obj and pend.obj.Parent == nil then stillThere = false end
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	local returnCf = hrp.CFrame
+	pcall(function()
+		hrp.CFrame = CFrame.new(pend.pos + Vector3.new(0, 3, 0))
+		hrp.AssemblyLinearVelocity = Vector3.zero
+	end)
+	task.wait(0.25)
+	if pend.obj and pend.obj.Parent == nil then stillThere = false end
+	if not stillThere then
+		pcall(function() hrp.CFrame = returnCf end)
+		notify("Evento ya no está, se omite")
+		return false
+	end
+	task.wait(0.6)
+	notify("Evento recogido")
+	return true
 end
 
 local function runOneLap()
@@ -107,6 +174,10 @@ local function runOneLap()
 	if not activeRoute or #activeRoute == 0 then activeRoute = S.routeCFrames end
 	if not activeRoute or #activeRoute == 0 then notify("Sin CFrames") return false end
 
+	local startCf = activeRoute[1]
+	local hitbox = ensureStartHitbox(startCf)
+	B._leftStartBox = false
+
 	local bv = hrp:FindFirstChildOfClass("BodyVelocity")
 	if not bv then
 		bv = Instance.new("BodyVelocity")
@@ -114,7 +185,8 @@ local function runOneLap()
 		bv.P = 1250
 		bv.Parent = hrp
 	end
-	hrp.CFrame = activeRoute[1]
+	hrp.CFrame = startCf
+	hrp.AssemblyLinearVelocity = Vector3.zero
 	task.wait(0.12)
 
 	local wbName = F.selectedRealName or "WinBlock1"
@@ -138,6 +210,11 @@ local function runOneLap()
 	for i = 2, #activeRoute do
 		if not F.routeRunning then break end
 		if i > targetRouteIndex then break end
+
+		if not B._leftStartBox and hrp and not playerInHitbox(hrp, hitbox) then
+			B._leftStartBox = true
+		end
+
 		if hum.Health <= 0 then
 			if S.waitAliveHrp then
 				hrp = S.waitAliveHrp(activeRoute[math.max(1, i - 1)])
@@ -165,6 +242,9 @@ local function runOneLap()
 		local guard = 0
 		while hrp and hrp.Parent and (hrp.Position - targetPos).Magnitude > 2.5 and F.routeRunning and hum and hum.Health > 0 and guard < 600 do
 			guard = guard + 1
+			if not B._leftStartBox and not playerInHitbox(hrp, hitbox) then
+				B._leftStartBox = true
+			end
 			if tick() - lastWbSearch >= 1 then
 				lastWbSearch = tick()
 				searchWin()
@@ -184,7 +264,6 @@ local function runOneLap()
 		if bv then bv.Velocity = Vector3.zero end
 	end
 
-	-- Empuje hacia el WinBlock (para tocarlo), SIN validar si se reclamo o no.
 	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
 	if winPos and hrp and F.routeRunning then
 		local t0 = tick()
@@ -201,11 +280,18 @@ local function runOneLap()
 	end
 
 	clearBV(hrp)
-	-- Solo espera fija; no revisa wins ni pregunta si se agarro
-	if F.routeRunning then
-		task.wait(CLAIM_WAIT)
-	end
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+
+	-- Fin natural: re-entrar a la hitbox del primer CFrame
+	if F.routeRunning and B._leftStartBox then
+		local tEnd = tick()
+		while F.routeRunning and tick() - tEnd < 25 do
+			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if hrp and playerInHitbox(hrp, hitbox) then break end
+			task.wait(0.08)
+		end
+	end
+
 	return true
 end
 
@@ -214,12 +300,23 @@ function B.startRoute()
 	F.routeRunning = true
 	B.routeRunning = true
 	B.busy = true
+	B._leftStartBox = false
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
 	task.spawn(function()
 		repeat
 			runOneLap()
 			if not F.routeRunning then break end
+			if B.pendingEvent then goCollectPending() end
 			if F.infinite and F.delayTime and F.delayTime > 0 then
+				local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode)) or S.routeCFrames
+				local startCf = activeRoute and activeRoute[1]
+				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if hrp and startCf then
+					pcall(function()
+						hrp.CFrame = startCf
+						hrp.AssemblyLinearVelocity = Vector3.zero
+					end)
+				end
 				task.wait(F.delayTime)
 			end
 		until not F.infinite or not F.routeRunning
@@ -231,27 +328,19 @@ end
 function B.requestMove(opts)
 	opts = opts or {}
 	if B.routeRunning then
-		if F.infinite then
-			B._queuedMove = opts
-			return false, "route_infinite_queue"
-		end
+		if F.infinite then B._queuedMove = opts; return false, "route_infinite_queue" end
 		return false, "route_busy"
 	end
 	B.busy = true
 	task.spawn(function()
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		if hrp and opts.cf then
-			hrp.CFrame = opts.cf
-		elseif hrp and opts.pos then
-			hrp.CFrame = CFrame.new(opts.pos)
-		end
+		if hrp and opts.cf then hrp.CFrame = opts.cf
+		elseif hrp and opts.pos then hrp.CFrame = CFrame.new(opts.pos) end
 		task.wait(opts.hold or 0.3)
 		B.busy = false
 		if B._queuedMove and not B.routeRunning then
-			local q = B._queuedMove
-			B._queuedMove = nil
-			B.requestMove(q)
+			local q = B._queuedMove; B._queuedMove = nil; B.requestMove(q)
 		end
 	end)
 	return true, "ok"
@@ -273,4 +362,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo")
+print("[Delta Hub] farm_brain listo (hitbox 20)")
