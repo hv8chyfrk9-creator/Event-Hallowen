@@ -1,5 +1,9 @@
--- tab_farm_tsunami.lua v7
--- Regla simple: tsunami DELANTE → frenar | tsunami DETRÁS → seguir
+-- tab_farm_tsunami.lua v8
+-- Raycast al tsunami + lógica por CFrames normal/fast respecto al WinBlock +10
+-- Antes del CF más cercano al +10Wins:
+--   tsunami toca CFs normal → hold en ese CF (+10)
+--   tsunami solo en CFs fast → hold en el CF siguiente al +10
+--   cuando tsunami vuelve a normal → permitir avanzar
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
@@ -19,11 +23,14 @@ F._lastTsunamiPos = nil
 F._lastTsunamiTick = nil
 F._tsunamiInFront = false
 F._tsunamiBehind = false
-F._tsunamiComingAtUs = false
+F._tsunamiOnNormal = false
+F._tsunamiOnFastOnly = false
+F._cf10Index = nil -- índice del CF más cercano al WinBlock +10
+F._holdAtIndex = nil -- índice donde debemos quedarnos
+F._forceHoldPos = nil -- Vector3 de hold
 
-local FRONT_RANGE = 70 -- studs: si está delante y dentro de esto, reaccionar
-local STOP_RANGE = 35 -- delante y muy cerca → full stop
-local SLOW_RANGE = 55 -- delante → ir lento
+local NEAR_CF = 22 -- studs: tsunami "toca" un CFrame
+local FRONT_RANGE = 80
 
 local function findTsunami()
 	local stage = Workspace:FindFirstChild("TsunamiStage4", true)
@@ -58,6 +65,85 @@ local function tsunamiWorldPos(t)
 	return p and p.Position
 end
 
+local function findPlus10WinPos()
+	-- Buscar WinBlock con display +10 o real WinBlock3
+	local blocks = S.orderedWinBlocks or {}
+	local realName = "WinBlock3"
+	for _, info in ipairs(blocks) do
+		local d = tostring(info.display or "")
+		if d:find("+10") and not d:upper():find("K") and not d:upper():find("M") then
+			realName = info.real
+			break
+		end
+	end
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == realName then
+			if obj:IsA("BasePart") then return obj.Position, realName end
+			local ok, piv = pcall(function() return obj:GetPivot() end)
+			if ok and piv then return piv.Position, realName end
+			local p = obj:FindFirstChildWhichIsA("BasePart", true)
+			if p then return p.Position, realName end
+		end
+	end
+	return nil, realName
+end
+
+local function getActiveRoute()
+	if S.getRouteCFramesForMode then
+		local list = select(1, S.getRouteCFramesForMode(F.routeMode or "normal"))
+		if list and #list > 0 then return list end
+	end
+	return S.routeCFrames
+end
+
+local function getRouteModes()
+	return S.routeModes or {}
+end
+
+-- Índice del CFrame de la ruta activa más cercano al +10 Wins
+local function computeCf10Index(route)
+	local pos10 = select(1, findPlus10WinPos())
+	if not pos10 or not route or #route == 0 then return nil end
+	local bestI, bestD = 1, math.huge
+	for i = 1, #route do
+		local d = (route[i].Position - pos10).Magnitude
+		if d < bestD then bestD, bestI = d, i end
+	end
+	return bestI, pos10
+end
+
+-- ¿El tsunami está cerca de algún CF con modo normal / solo fast?
+local function classifyTsunamiVsRoute(tPos, route)
+	if not tPos or not route then return false, false end
+	local modes = getRouteModes()
+	local onNormal, onFast = false, false
+	-- route es lista filtrada por modo; usamos S.routeCFrames + modes con índices originales si existen
+	local full = S.routeCFrames or route
+	local fullModes = modes
+	for i = 1, #full do
+		local cf = full[i]
+		if cf and (cf.Position - tPos).Magnitude <= NEAR_CF then
+			local m = fullModes[i]
+			if m then
+				if m.normal then onNormal = true end
+				if m.fast and not m.normal then onFast = true end
+				if m.fast then onFast = onFast or true end
+			else
+				onNormal = true -- sin info → tratar como normal
+			end
+		end
+	end
+	-- También contra la ruta activa (por si los índices difieren)
+	for i = 1, #route do
+		if (route[i].Position - tPos).Magnitude <= NEAR_CF then
+			onNormal = onNormal or true
+		end
+	end
+	local onlyFast = onFast and not onNormal
+	return onNormal, onlyFast
+end
+
+-- Tracking loop
 task.spawn(function()
 	while true do
 		task.wait(0.08)
@@ -66,6 +152,7 @@ task.spawn(function()
 		local t = findTsunami()
 		local tPos = tsunamiWorldPos(t)
 		local now = tick()
+		local route = getActiveRoute()
 
 		if tPos then
 			if F._lastTsunamiPos and F._lastTsunamiTick then
@@ -74,9 +161,7 @@ task.spawn(function()
 					local instVel = (tPos - F._lastTsunamiPos) / dt
 					F._tsunamiVel = F._tsunamiVel:Lerp(instVel, 0.4)
 					F._tsunamiSpeed = F._tsunamiVel.Magnitude
-					if F._tsunamiSpeed > 0.5 then
-						F._tsunamiDir = F._tsunamiVel.Unit
-					end
+					if F._tsunamiSpeed > 0.5 then F._tsunamiDir = F._tsunamiVel.Unit end
 				end
 			end
 			F._lastTsunamiPos = tPos
@@ -84,46 +169,59 @@ task.spawn(function()
 			F._tsunamiPos = tPos
 
 			if hrp then
-				local d = (hrp.Position - tPos).Magnitude
-				F._tsunamiDist = d
-
-				-- Dirección de movimiento del jugador (hacia el siguiente CF si existe)
-				local moveDir = nil
+				F._tsunamiDist = (hrp.Position - tPos).Magnitude
+				local moveDir = hrp.CFrame.LookVector
 				if type(F._nextRoutePos) == "Vector3" then
-					local toNext = F._nextRoutePos - hrp.Position
-					if toNext.Magnitude > 0.5 then moveDir = toNext.Unit end
+					local to = F._nextRoutePos - hrp.Position
+					if to.Magnitude > 0.5 then moveDir = to.Unit end
 				end
-				if not moveDir and hrp.AssemblyLinearVelocity.Magnitude > 2 then
-					moveDir = hrp.AssemblyLinearVelocity.Unit
-				end
-				if not moveDir then
-					moveDir = hrp.CFrame.LookVector
-				end
-
-				-- Vector al tsunami desde el jugador
-				local toTsunami = tPos - hrp.Position
-				local flatTo = Vector3.new(toTsunami.X, 0, toTsunami.Z)
+				local flatTo = Vector3.new(tPos.X - hrp.Position.X, 0, tPos.Z - hrp.Position.Z)
 				local flatMove = Vector3.new(moveDir.X, 0, moveDir.Z)
 				if flatTo.Magnitude > 0.1 and flatMove.Magnitude > 0.1 then
 					local align = flatMove.Unit:Dot(flatTo.Unit)
-					-- >0.15 = más o menos delante en la dirección del recorrido
-					F._tsunamiInFront = align > 0.15
-					F._tsunamiBehind = align < -0.15
+					F._tsunamiInFront = align > 0.12
+					F._tsunamiBehind = align < -0.12
 				else
 					F._tsunamiInFront = false
 					F._tsunamiBehind = false
 				end
+			end
 
-				-- ¿El tsunami se mueve hacia nosotros?
-				if F._tsunamiDir.Magnitude > 0.1 then
-					local towardUs = (hrp.Position - tPos)
-					if towardUs.Magnitude > 0.1 then
-						F._tsunamiComingAtUs = F._tsunamiDir:Dot(towardUs.Unit) > 0.3
-					else
-						F._tsunamiComingAtUs = false
+			local onN, onlyF = classifyTsunamiVsRoute(tPos, route)
+			F._tsunamiOnNormal = onN
+			F._tsunamiOnFastOnly = onlyF
+
+			local idx10 = computeCf10Index(route)
+			F._cf10Index = idx10
+
+			-- Decidir hold
+			F._holdAtIndex = nil
+			F._forceHoldPos = nil
+			if idx10 and route and F.routeRunning and not F._ignoreTsunami then
+				-- ¿Jugador está ANTES del CF10 en la ruta?
+				local playerBefore10 = true
+				if hrp then
+					-- índice de ruta más cercano al jugador
+					local bestI, bestD = 1, math.huge
+					for i = 1, #route do
+						local d = (route[i].Position - hrp.Position).Magnitude
+						if d < bestD then bestD, bestI = d, i end
 					end
-				else
-					F._tsunamiComingAtUs = false
+					playerBefore10 = bestI <= idx10
+				end
+
+				if playerBefore10 then
+					if onN then
+						-- Tsunami toca normales → quedarse en CF más cerca del +10
+						F._holdAtIndex = idx10
+						F._forceHoldPos = route[idx10].Position
+					elseif onlyF then
+						-- Tsunami solo en fast → CF siguiente al del +10
+						local nextI = math.min(idx10 + 1, #route)
+						F._holdAtIndex = nextI
+						F._forceHoldPos = route[nextI].Position
+					end
+					-- si no toca ni normal ni fast cerca, no forzar hold por esta regla
 				end
 			end
 		else
@@ -131,15 +229,16 @@ task.spawn(function()
 			F._tsunamiDist = nil
 			F._tsunamiInFront = false
 			F._tsunamiBehind = false
-			F._tsunamiComingAtUs = false
+			F._tsunamiOnNormal = false
+			F._tsunamiOnFastOnly = false
+			F._holdAtIndex = nil
+			F._forceHoldPos = nil
 		end
 	end
 end)
 
 function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	if not hrp then return baseSpeed, false end
-
-	-- WinBlocks ≤10: ignorar
 	if F._ignoreTsunami then
 		F._tsunamiSkipNext = false
 		return baseSpeed, false
@@ -151,61 +250,51 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	end
 
 	local d = F._tsunamiDist
+
+	-- ===== HOLD FORZADO por zona normal/fast =====
+	if F._forceHoldPos then
+		local holdPos = F._forceHoldPos
+		local distHold = (hrp.Position - holdPos).Magnitude
+		-- Si aún no estamos en el punto de hold, ir HACIA él (no al siguiente CF peligroso)
+		if distHold > 3.5 then
+			-- Señalar al brain que el target temporal es el hold
+			F._nextRoutePos = holdPos
+			F._tsunamiSkipNext = false
+			-- velocidad hacia el hold, no más allá
+			return math.min(baseSpeed or 200, 90), true
+		end
+		-- Ya en el hold → parado hasta que cambie la zona del tsunami
+		F._tsunamiSkipNext = false
+		return 0, true
+	end
+
 	if not d or not F._tsunamiPos then
 		return baseSpeed, false
 	end
 
-	-- ==========================================
-	-- REGLA PRINCIPAL
-	-- Delante → frenar / esperar
-	-- Detrás → seguir (no frenar por él)
-	-- ==========================================
-
-	-- DETRÁS: ignorar y seguir el recorrido
+	-- Detrás → seguir
 	if F._tsunamiBehind and not F._tsunamiInFront then
 		F._tsunamiSkipNext = false
 		return baseSpeed, false
 	end
 
-	-- DELANTE
+	-- Delante → frenar (fallback)
 	if F._tsunamiInFront and d <= FRONT_RANGE then
-		-- Muy cerca delante → parar
-		if d <= STOP_RANGE then
-			-- Si viene hacia nosotros: parar y esperar que cruce/pase
-			if F._tsunamiComingAtUs then
-				F._tsunamiHoldUntil = now + 0.25
-				F._tsunamiSkipNext = false
-				return 0, true
-			end
-			-- Está delante pero no viene hacia nosotros (lateral o quieto):
-			-- frenar un poco, observar; si se aleja podemos seguir lento
+		if d <= 30 then
 			return 0, true
 		end
-
-		-- Delante a media distancia
-		if d <= SLOW_RANGE then
-			if F._tsunamiComingAtUs then
-				-- Viene hacia nosotros: frenar fuerte y esperar
-				return 0, true
-			end
-			-- Delante pero no viene a nosotros: ir muy lento / parar a observar
-			return math.min(baseSpeed or 200, 8), true
+		if d <= 50 then
+			return math.min(baseSpeed or 200, 10), true
 		end
-
-		-- Delante pero más lejos (SLOW_RANGE .. FRONT_RANGE)
-		if F._tsunamiComingAtUs then
-			return math.min(baseSpeed or 200, 20), true
-		end
-		return math.min(baseSpeed or 200, math.max(40, (baseSpeed or 200) * 0.35)), true
+		return math.min(baseSpeed or 200, 35), true
 	end
 
-	-- Ni claramente delante ni detrás (lado): cautela suave si está cerca
-	if d <= 25 then
-		return math.min(baseSpeed or 200, 15), true
+	if d <= 22 then
+		return math.min(baseSpeed or 200, 12), true
 	end
 
 	F._tsunamiSkipNext = false
 	return baseSpeed, false
 end
 
-print("[Delta Hub] Tsunami v7 (delante=frenar, detrás=seguir)")
+print("[Delta Hub] Tsunami v8 (+10Wins hold normal/fast)")
