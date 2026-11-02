@@ -1,4 +1,4 @@
--- DELTA HUB tab_events Halloween (nombre EXACTO; BattleCoin + número 1-4000)
+-- DELTA HUB tab_events Halloween (1 sola pestaña)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
@@ -10,6 +10,13 @@ if type(S) ~= "table" or not S.UI or not S.UI.ContentArea then
 	warn("[Delta Hub] tab_events: falta hub")
 	return
 end
+
+-- Evitar doble pestaña Events
+if S._eventsTabBuilt then
+	print("[Delta Hub] tab_events ya cargado, skip")
+	return
+end
+S._eventsTabBuilt = true
 
 S.Events = S.Events or {}
 local E = S.Events
@@ -26,10 +33,6 @@ E.searchInterval = 1
 E.busy = false
 E.priority = E.priority or { "chocolate", "battlecoin", "xp", "candy", "specialkeys" }
 
-local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
-local NEXT_URL = BASE .. "tab_extras.lua"
-
--- Nombres EXACTOS (no contains). BattleCoin se maneja aparte con número.
 local EXACT = {
 	chocolate = { "ChocolateHunt", "Chocolate Hunt" },
 	candy = { "EventCoin", "CandyCorn", "Candy Corn" },
@@ -135,6 +138,15 @@ local function createScrollingPage(parent)
 	return sc
 end
 
+-- Limpiar botones Events duplicados en sidebar
+if S.UI.Sidebar then
+	for _, ch in ipairs(S.UI.Sidebar:GetChildren()) do
+		if ch:IsA("TextButton") and ch.Text == "Events" then
+			pcall(function() ch:Destroy() end)
+		end
+	end
+end
+
 local eventsPage = createScrollingPage(S.UI.ContentArea)
 S.UI.Pages = S.UI.Pages or {}
 S.UI.Pages.Events = eventsPage
@@ -150,11 +162,15 @@ tabEvents.TextSize = 14
 tabEvents.LayoutOrder = 3
 corner(tabEvents, 6)
 tabEvents.MouseButton1Click:Connect(function()
-	for _, p in pairs(S.UI.Pages) do
-		if typeof(p) == "Instance" then p.Visible = false end
+	if S.UI.showOnlyPage then
+		S.UI.showOnlyPage(eventsPage, "Events")
+	else
+		for _, p in pairs(S.UI.Pages) do
+			if typeof(p) == "Instance" then p.Visible = false end
+		end
+		eventsPage.Visible = true
+		if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Events" end
 	end
-	eventsPage.Visible = true
-	if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Events" end
 end)
 
 setProgress(78, "Events", "Toggles...")
@@ -203,7 +219,6 @@ end
 
 local function exactKind(name)
 	if not name then return nil end
-	-- BattleCoin siempre lleva número (1..4000)
 	local nstr = name:match("^BattleCoin(%d+)$")
 		or name:match("^CoinBattleCoin(%d+)$")
 		or name:match("^Battle Coin(%d+)$")
@@ -244,12 +259,10 @@ local function rememberEvent(obj)
 	local id = tostring(target:GetFullName())
 	if E.seen[id] then return false end
 	E.seen[id] = true
-
 	if S.Brain and S.Brain.routeRunning and S.Brain.reportFoundEvent then
 		S.Brain.reportFoundEvent({ pos = pos, kind = kind, obj = target })
 		return true
 	end
-
 	table.insert(E.queue, { obj = target, pos = pos, kind = kind })
 	return true
 end
@@ -354,18 +367,4 @@ if not S._eventsLoopsStarted then
 end
 
 setProgress(87, "Events", "Events lista")
-task.spawn(function()
-	local ok, body = pcall(function() return game:HttpGet(NEXT_URL) end)
-	if not ok or type(body) ~= "string" or #body < 20 then
-		warn("[Delta Hub] no tab_extras")
-		setProgress(87.5, "Error", "Falta tab_extras")
-		return
-	end
-	local fn, err = loadstring(body)
-	if not fn then warn("[Delta Hub] tab_extras load", err) return end
-	setProgress(87.5, "Events", "Entrando a Extras...")
-	local okRun, runErr = pcall(fn)
-	if not okRun then warn("[Delta Hub] tab_extras run", runErr) end
-end)
-
-print("[Delta Hub] Events listo (exact + BattleCoinN)")
+print("[Delta Hub] Events listo (1 pestaña)")
