@@ -1,5 +1,6 @@
 -- ==========================================
 -- DELTA HUB - Event Hallowen - tab_extras.lua
+-- Anti-lag unificado + selector colapsable
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -21,7 +22,9 @@ local X = S.Extras
 X.renderOn = X.renderOn or false
 X.renderWhite = X.renderWhite ~= false
 X.statsOn = X.statsOn or false
-X.antiKey = X.antiKey or false
+X.antiLagOn = X.antiLagOn or false
+X.antiOpts = X.antiOpts or { decorations = true, halloween = true, keycaps = true }
+X.antiSelOpen = X.antiSelOpen or false
 
 local function setProgress(p, title, sub)
 	if S.setProgress then S.setProgress(p, title, sub) end
@@ -39,37 +42,42 @@ local function fmtNum(n)
 	return tostring(n)
 end
 
-local function makeSwitch(parent, text, order)
+local function makeToggleRow(parent, text, order, get, set)
 	local row = Instance.new("Frame")
 	row.Parent = parent
-	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, -8, 0, 30)
+	row.BackgroundColor3 = Color3.fromRGB(32, 32, 36)
+	row.Size = UDim2.new(1, -4, 0, 34)
 	row.LayoutOrder = order or 1
-	local lab = Instance.new("TextLabel")
-	lab.Parent = row
-	lab.BackgroundTransparency = 1
-	lab.Size = UDim2.new(1, -54, 1, 0)
-	lab.Font = Enum.Font.Gotham
-	lab.Text = text
-	lab.TextColor3 = Color3.fromRGB(240, 240, 245)
-	lab.TextSize = 12
-	lab.TextXAlignment = Enum.TextXAlignment.Left
-	local hit = Instance.new("TextButton")
-	hit.Parent = row
-	hit.Size = UDim2.new(0, 48, 0, 24)
-	hit.Position = UDim2.new(1, -48, 0.5, -12)
-	hit.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-	hit.Text = "OFF"
-	hit.TextColor3 = Color3.fromRGB(255, 120, 120)
-	hit.Font = Enum.Font.GothamBold
-	hit.TextSize = 11
-	corner(hit, 6)
-	local function paint(on)
-		hit.Text = on and "ON" or "OFF"
-		hit.TextColor3 = on and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 120, 120)
-		hit.BackgroundColor3 = on and Color3.fromRGB(40, 90, 50) or Color3.fromRGB(60, 60, 70)
+	corner(row, 6)
+	local label = Instance.new("TextLabel")
+	label.Parent = row
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, -70, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.Font = Enum.Font.Gotham
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(240, 240, 245)
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	local btn = Instance.new("TextButton")
+	btn.Parent = row
+	btn.Size = UDim2.new(0, 50, 0, 22)
+	btn.Position = UDim2.new(1, -56, 0.5, -11)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	local function refresh()
+		local on = get()
+		btn.Text = on and "ON" or "OFF"
+		btn.TextColor3 = on and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
+		btn.BackgroundColor3 = on and Color3.fromRGB(30, 80, 40) or Color3.fromRGB(50, 40, 40)
 	end
-	return row, paint, hit
+	refresh()
+	corner(btn, 6)
+	btn.MouseButton1Click:Connect(function()
+		set(not get())
+		refresh()
+	end)
+	return row, btn, refresh
 end
 
 local function section(parent, title, order)
@@ -120,6 +128,33 @@ local function createScrollingPage(parent)
 	return sc
 end
 
+local function deleteNamed(names)
+	local n = 0
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		for _, name in ipairs(names) do
+			if obj.Name == name then pcall(function() obj:Destroy() end); n = n + 1 end
+		end
+	end
+	return n
+end
+
+local function stripKeycaps()
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == "KeyCaps" or (obj.Parent and obj.Parent.Name == "KeyCaps") then
+			if obj:IsA("BasePart") then obj.Transparency = 1; obj.CanCollide = false end
+			for _, d in ipairs(obj:GetDescendants()) do
+				if d:IsA("BasePart") then d.Transparency = 1; d.CanCollide = false end
+			end
+		end
+	end
+end
+
+local function runAntiLagOnce()
+	if X.antiOpts.decorations then deleteNamed({ "Decorations", "Props" }) end
+	if X.antiOpts.halloween then deleteNamed({ "Halloween", "HalloweenMeshes", "HallowenMeshes" }) end
+	if X.antiOpts.keycaps then stripKeycaps() end
+end
+
 setProgress(88, "Extras", "Creando pestaña...")
 local extrasPage = createScrollingPage(S.UI.ContentArea)
 S.UI.Pages = S.UI.Pages or {}
@@ -145,65 +180,115 @@ end)
 
 setProgress(90, "Extras", "Antilag...")
 local antiBody = section(extrasPage, "Anti lag", 1)
-local function deleteNamed(names)
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		for _, n in ipairs(names) do
-			if obj.Name == n then pcall(function() obj:Destroy() end) end
-		end
-	end
+
+local optLabels = {
+	{ key = "decorations", text = "Decorations / Props" },
+	{ key = "halloween", text = "Halloween / Meshes" },
+	{ key = "keycaps", text = "Keycaps transparentes" },
+}
+
+local function countSelected()
+	local c = 0
+	for _, v in pairs(X.antiOpts) do if v then c = c + 1 end end
+	return c
 end
-local function stripKeycaps()
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if obj.Name == "KeyCaps" or (obj.Parent and obj.Parent.Name == "KeyCaps") then
-			if obj:IsA("BasePart") then obj.Transparency = 1; obj.CanCollide = false end
-			for _, d in ipairs(obj:GetDescendants()) do
-				if d:IsA("BasePart") then d.Transparency = 1; d.CanCollide = false end
+
+local function summaryText()
+	local parts = {}
+	for _, info in ipairs(optLabels) do
+		if X.antiOpts[info.key] then table.insert(parts, info.text) end
+	end
+	if #parts == 0 then return "Ninguna" end
+	return table.concat(parts, ", ")
+end
+
+local selHeader = Instance.new("TextButton")
+selHeader.Parent = antiBody
+selHeader.Size = UDim2.new(1, -4, 0, 30)
+selHeader.BackgroundColor3 = Color3.fromRGB(36, 36, 44)
+selHeader.Font = Enum.Font.Gotham
+selHeader.TextSize = 12
+selHeader.TextColor3 = Color3.fromRGB(240, 240, 245)
+selHeader.TextXAlignment = Enum.TextXAlignment.Left
+selHeader.LayoutOrder = 1
+corner(selHeader, 6)
+
+local selList = Instance.new("Frame")
+selList.Parent = antiBody
+selList.BackgroundTransparency = 1
+selList.Size = UDim2.new(1, 0, 0, 0)
+selList.AutomaticSize = Enum.AutomaticSize.Y
+selList.Visible = X.antiSelOpen
+selList.LayoutOrder = 2
+local selLay = Instance.new("UIListLayout")
+selLay.Parent = selList
+selLay.SortOrder = Enum.SortOrder.LayoutOrder
+selLay.Padding = UDim.new(0, 4)
+
+local function refreshHeader()
+	local arrow = X.antiSelOpen and "▼" or "▶"
+	selHeader.Text = "  " .. arrow .. "  Opciones: " .. summaryText()
+	selList.Visible = X.antiSelOpen
+end
+
+local antiSwitchRefresh
+
+for i, info in ipairs(optLabels) do
+	local row = Instance.new("TextButton")
+	row.Parent = selList
+	row.Size = UDim2.new(1, -4, 0, 28)
+	row.BackgroundColor3 = X.antiOpts[info.key] and Color3.fromRGB(40, 90, 50) or Color3.fromRGB(36, 36, 44)
+	row.Font = Enum.Font.Gotham
+	row.Text = (X.antiOpts[info.key] and "[x] " or "[ ] ") .. info.text
+	row.TextColor3 = Color3.fromRGB(240, 240, 245)
+	row.TextSize = 12
+	row.TextXAlignment = Enum.TextXAlignment.Left
+	row.LayoutOrder = i
+	corner(row, 6)
+	row.MouseButton1Click:Connect(function()
+		local was = X.antiOpts[info.key]
+		if was and countSelected() <= 1 then
+			notify("Debe quedar al menos 1 opción")
+			return
+		end
+		X.antiOpts[info.key] = not was
+		row.BackgroundColor3 = X.antiOpts[info.key] and Color3.fromRGB(40, 90, 50) or Color3.fromRGB(36, 36, 44)
+		row.Text = (X.antiOpts[info.key] and "[x] " or "[ ] ") .. info.text
+		refreshHeader()
+		if X.antiLagOn then
+			X.antiLagOn = false
+			if antiSwitchRefresh then antiSwitchRefresh() end
+			notify("Anti lag OFF (cambiaste opciones)")
+		end
+	end)
+end
+
+selHeader.MouseButton1Click:Connect(function()
+	X.antiSelOpen = not X.antiSelOpen
+	refreshHeader()
+end)
+refreshHeader()
+
+local _, _, refreshAnti = makeToggleRow(antiBody, "Anti lag activo", 10, function() return X.antiLagOn end, function(v)
+	X.antiLagOn = v
+	if v then
+		runAntiLagOnce()
+		notify("Anti lag ON")
+		task.spawn(function()
+			while X.antiLagOn do
+				if X.antiOpts.keycaps then stripKeycaps() end
+				if X.antiOpts.decorations or X.antiOpts.halloween then runAntiLagOnce() end
+				task.wait(0.5)
 			end
-		end
+		end)
+	else
+		notify("Anti lag OFF")
 	end
-end
-
-local decoBtn = Instance.new("TextButton")
-decoBtn.Parent = antiBody
-decoBtn.Size = UDim2.new(1, -8, 0, 28)
-decoBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-decoBtn.Text = "Borrar Decorations + Props"
-decoBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
-decoBtn.Font = Enum.Font.Gotham
-decoBtn.TextSize = 12
-decoBtn.LayoutOrder = 1
-corner(decoBtn, 6)
-decoBtn.MouseButton1Click:Connect(function()
-	deleteNamed({ "Decorations", "Props" })
-	notify("Decorations/Props borrados")
 end)
-
-local hallBtn = Instance.new("TextButton")
-hallBtn.Parent = antiBody
-hallBtn.Size = UDim2.new(1, -8, 0, 28)
-hallBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-hallBtn.Text = "Borrar Halloween + HalloweenMeshes"
-hallBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
-hallBtn.Font = Enum.Font.Gotham
-hallBtn.TextSize = 12
-hallBtn.LayoutOrder = 2
-corner(hallBtn, 6)
-hallBtn.MouseButton1Click:Connect(function()
-	deleteNamed({ "Halloween", "HalloweenMeshes", "HallowenMeshes" })
-	notify("Halloween borrado")
-end)
-
-local _, paintKey, hitKey = makeSwitch(antiBody, "Keycaps transparentes (loop)", 3)
-hitKey.MouseButton1Click:Connect(function()
-	X.antiKey = not X.antiKey
-	paintKey(X.antiKey)
-	if X.antiKey then stripKeycaps() end
-end)
-paintKey(X.antiKey)
+antiSwitchRefresh = refreshAnti
 
 setProgress(93, "Extras", "Pantalla / Stats...")
 local screenBody = section(extrasPage, "Pantalla", 2)
-local _, paintRender, hitRender = makeSwitch(screenBody, "No render", 1)
 
 local renderGui = Instance.new("ScreenGui")
 renderGui.Name = "DeltaHubNoRender"
@@ -254,15 +339,12 @@ bB.TextSize = 12
 corner(bB, 5)
 bB.MouseButton1Click:Connect(function() X.renderWhite = false; applyRender() end)
 
-hitRender.MouseButton1Click:Connect(function()
-	X.renderOn = not X.renderOn
-	paintRender(X.renderOn)
-	colorRow.Visible = X.renderOn
+makeToggleRow(screenBody, "No render", 1, function() return X.renderOn end, function(v)
+	X.renderOn = v
+	colorRow.Visible = v
 	applyRender()
 end)
-paintRender(X.renderOn)
 
-local _, paintStats, hitStats = makeSwitch(screenBody, "Stats", 3)
 local statsGui = Instance.new("ScreenGui")
 statsGui.Name = "DeltaHubStats"
 statsGui.ResetOnSpawn = false
@@ -299,13 +381,11 @@ perfCard.Active = true
 perfCard.Draggable = true
 corner(perfCard, 6)
 
-hitStats.MouseButton1Click:Connect(function()
-	X.statsOn = not X.statsOn
-	paintStats(X.statsOn)
-	cardStats.Visible = X.statsOn
-	perfCard.Visible = X.statsOn
+makeToggleRow(screenBody, "Stats", 3, function() return X.statsOn end, function(v)
+	X.statsOn = v
+	cardStats.Visible = v
+	perfCard.Visible = v
 end)
-paintStats(X.statsOn)
 
 setProgress(96, "Extras", "Bucles finales...")
 if not S._extrasLoopsStarted then
@@ -316,7 +396,6 @@ if not S._extrasLoopsStarted then
 	task.spawn(function()
 		while true do
 			task.wait(0.5)
-			if X.antiKey then stripKeycaps() end
 			if X.statsOn then
 				local fps = frames * 2
 				frames = 0
