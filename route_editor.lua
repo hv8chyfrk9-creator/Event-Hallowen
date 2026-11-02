@@ -1,5 +1,5 @@
--- Delta Hub · Route Editor (compacto, arrastrable, min/max)
--- Usa S.routeCFrames / S.routeModes / S.Brain si existen
+-- Delta Hub · Route Editor Halloween
+-- Carga TODA la ruta (route_data + ext + ext2) para editar
 
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
@@ -7,15 +7,54 @@ local pg = player:WaitForChild("PlayerGui")
 
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then S = {}; getgenv().DeltaHub = S end
-S.routeCFrames = S.routeCFrames or {}
-S.routeModes = S.routeModes or {}
 S.Farm = S.Farm or {}
+
+local BASE = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+
+-- Siempre recargar rutas Halloween en el editor
+S.routeCFrames = {}
+S.routeModes = {}
+do
+	local files = { "route_data.lua", "route_data_ext.lua", "route_data_ext2.lua" }
+	for _, name in ipairs(files) do
+		local ok, body = pcall(function() return game:HttpGet(BASE .. name) end)
+		if ok and type(body) == "string" and #body > 40 then
+			local fn = loadstring(body)
+			if fn then pcall(fn) end
+		end
+	end
+end
+
+if not S.orderedWinBlocks then
+	S.orderedWinBlocks = {
+		{ real = "WinBlock1", display = "+1 Wins", order = 1 },
+		{ real = "WinBlock2", display = "+3 Wins", order = 2 },
+		{ real = "WinBlock3", display = "+10 Wins", order = 3 },
+		{ real = "WinBlock4", display = "+20 Wins", order = 4 },
+		{ real = "WinBlock5", display = "+50 Wins", order = 5 },
+		{ real = "WinBlock6", display = "+100 Wins", order = 6 },
+		{ real = "WinBlock7", display = "+150 Wins", order = 7 },
+		{ real = "WinBlock8", display = "+300 Wins", order = 8 },
+		{ real = "WinBlock9", display = "+500 Wins", order = 9 },
+		{ real = "WinBlock10", display = "+1K Wins", order = 10 },
+		{ real = "WinBlock11", display = "+2.5K Wins", order = 11 },
+		{ real = "WinBlock12", display = "+10K Wins", order = 12 },
+		{ real = "WinBlock13", display = "+25K Wins", order = 13 },
+		{ real = "WinBlock14", display = "+50K Wins", order = 14 },
+		{ real = "WinBlock15", display = "+150K Wins", order = 15 },
+	}
+end
 
 local F = S.Farm
 F.routeMode = F.routeMode or "normal"
 F.routeSpeed = F.routeSpeed or 250
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 F.selectedDisplayName = F.selectedDisplayName or "+1 Wins"
+
+local totalCF = 0
+for i = 1, 500 do
+	if S.routeCFrames[i] then totalCF = i end
+end
 
 local old = pg:FindFirstChild("DeltaRouteEditor")
 if old then old:Destroy() end
@@ -57,7 +96,7 @@ title.BackgroundTransparency = 1
 title.Size = UDim2.new(1, -70, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.Font = Enum.Font.GothamBold
-title.Text = "Route Editor"
+title.Text = "RE · HW (" .. totalCF .. " CF)"
 title.TextColor3 = Color3.fromRGB(240, 240, 245)
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -95,7 +134,6 @@ logo.MouseButton1Click:Connect(function()
 	logo.Visible = false
 end)
 
--- Tabs
 local tabBar = Instance.new("Frame")
 tabBar.Parent = main
 tabBar.BackgroundTransparency = 1
@@ -203,16 +241,22 @@ local function notify(msg)
 	end)
 end
 
+local function maxIdx()
+	local m = 0
+	for i = 1, 500 do if S.routeCFrames[i] then m = i end end
+	return m
+end
+
 -- ===== TAB FRAMES =====
 local tabF, pageF = makeTab("Frames", 1)
-label(pageF, "Nº de CFrame (1..N)", 1)
+label(pageF, "Nº CFrame (1.." .. tostring(maxIdx()) .. ")", 1)
 local idxBox = box(pageF, "ej: 14", 2)
 local infoLbl = Instance.new("TextLabel")
 infoLbl.Parent = pageF
 infoLbl.BackgroundTransparency = 1
-infoLbl.Size = UDim2.new(1, 0, 0, 36)
+infoLbl.Size = UDim2.new(1, 0, 0, 40)
 infoLbl.Font = Enum.Font.Code
-infoLbl.Text = "Sin frame cargado"
+infoLbl.Text = "Total: " .. maxIdx() .. " CFrames cargados"
 infoLbl.TextColor3 = Color3.fromRGB(160, 180, 160)
 infoLbl.TextSize = 10
 infoLbl.TextWrapped = true
@@ -233,7 +277,7 @@ local function getIdx()
 	local n = tonumber(idxBox.Text)
 	if not n then return nil end
 	n = math.floor(n)
-	if n < 1 or n > #(S.routeCFrames or {}) then return nil end
+	if not S.routeCFrames[n] then return nil end
 	return n
 end
 
@@ -245,18 +289,18 @@ local function showFrame(i)
 	yBox.Text = string.format("%.4f", p.Y)
 	zBox.Text = string.format("%.4f", p.Z)
 	local m = S.routeModes[i] or {}
-	local modes = {}
-	if m.normal then table.insert(modes, "N") end
-	if m.fast then table.insert(modes, "F") end
-	if m.super then table.insert(modes, "S") end
-	infoLbl.Text = string.format("CF %d / %d  modes:%s\n%.2f, %.2f, %.2f",
-		i, #S.routeCFrames, table.concat(modes, "") ~= "" and table.concat(modes, "") or "?",
+	local tags = {}
+	if m.normal then table.insert(tags, "N") end
+	if m.fast then table.insert(tags, "F") end
+	if m.super then table.insert(tags, "S") end
+	infoLbl.Text = string.format("CF %d / %d  modes:%s\n%.3f, %.3f, %.3f",
+		i, maxIdx(), (#tags > 0 and table.concat(tags, "") or "?"),
 		p.X, p.Y, p.Z)
 end
 
 loadBtn.MouseButton1Click:Connect(function()
 	local i = getIdx()
-	if not i then notify("Índice inválido") return end
+	if not i then notify("Índice inválido (max " .. maxIdx() .. ")") return end
 	showFrame(i)
 	notify("Frame " .. i)
 end)
@@ -286,15 +330,16 @@ tpBtn.MouseButton1Click:Connect(function()
 end)
 
 exportBtn.MouseButton1Click:Connect(function()
-	local frames = S.routeCFrames or {}
-	local modes = S.routeModes or {}
-	if #frames == 0 then notify("Sin frames") return end
+	local maxn = maxIdx()
+	if maxn == 0 then notify("Sin frames") return end
 	local lines = { "local routeCFrames = {" }
-	for i, cf in ipairs(frames) do
+	for i = 1, maxn do
+		local cf = S.routeCFrames[i]
+		if not cf then continue end
 		local p = cf.Position
-		local m = modes[i] or {}
+		local m = S.routeModes[i] or {}
 		local tag = (m.normal and "N" or "") .. (m.fast and "F" or "") .. (m.super and "S" or "")
-		local comma = (i < #frames) and "," or ""
+		local comma = (i < maxn) and "," or ""
 		table.insert(lines, string.format(
 			"\tCFrame.new(%.6f, %.6f, %.6f)%s -- CF %d modes:%s",
 			p.X, p.Y, p.Z, comma, i, tag ~= "" and tag or "?"
@@ -303,9 +348,9 @@ exportBtn.MouseButton1Click:Connect(function()
 	table.insert(lines, "}")
 	table.insert(lines, "")
 	table.insert(lines, "local routeModes = {")
-	for i = 1, #frames do
-		local m = modes[i] or { normal = true, fast = true, super = true }
-		local comma = (i < #frames) and "," or ""
+	for i = 1, maxn do
+		local m = S.routeModes[i] or { normal = true, fast = false, super = false }
+		local comma = (i < maxn) and "," or ""
 		table.insert(lines, string.format(
 			"\t[%d] = { normal = %s, fast = %s, super = %s }%s -- CF %d",
 			i,
@@ -319,10 +364,10 @@ exportBtn.MouseButton1Click:Connect(function()
 	local out = table.concat(lines, "\n")
 	if setclipboard then
 		pcall(function() setclipboard(out) end)
-		notify("Exportado al clipboard (" .. #frames .. " CF)")
+		notify("Export clipboard (" .. maxn .. " CF)")
 	else
 		print("\n===== ROUTE EXPORT =====\n" .. out .. "\n===== END =====\n")
-		notify("Export en F9 console (" .. #frames .. " CF)")
+		notify("Export F9 (" .. maxn .. " CF)")
 	end
 end)
 
@@ -341,12 +386,7 @@ local winLay = Instance.new("UIListLayout")
 winLay.Parent = winList
 winLay.Padding = UDim.new(0, 3)
 
-local blocks = S.orderedWinBlocks or {
-	{ real = "WinBlock1", display = "+1 Wins" },
-	{ real = "WinBlock2", display = "+3 Wins" },
-	{ real = "WinBlock3", display = "+10 Wins" },
-}
-for i, info in ipairs(blocks) do
+for i, info in ipairs(S.orderedWinBlocks) do
 	local o = btn(winList, info.display, i, Color3.fromRGB(36, 36, 44))
 	o.MouseButton1Click:Connect(function()
 		F.selectedRealName = info.real
@@ -369,13 +409,13 @@ speedBox.FocusLost:Connect(function()
 	if n then F.routeSpeed = math.clamp(n, 1, 500); speedBox.Text = tostring(F.routeSpeed) end
 end)
 
-local modes = { "normal", "fast", "ultra" }
+local modeList = { "normal", "fast", "ultra" }
 local modeIdx = 1
-for i, m in ipairs(modes) do if m == F.routeMode then modeIdx = i end end
-local modeBtn = btn(pageR, "Modo: " .. modes[modeIdx], 6)
+for i, m in ipairs(modeList) do if m == F.routeMode then modeIdx = i end end
+local modeBtn = btn(pageR, "Modo: " .. modeList[modeIdx], 6)
 modeBtn.MouseButton1Click:Connect(function()
-	modeIdx = modeIdx % #modes + 1
-	F.routeMode = modes[modeIdx]
+	modeIdx = modeIdx % #modeList + 1
+	F.routeMode = modeList[modeIdx]
 	modeBtn.Text = "Modo: " .. F.routeMode
 end)
 
@@ -411,8 +451,7 @@ if S.Farm then
 	end
 end
 
--- default tab
 pageF.Visible = true
 tabF.BackgroundColor3 = Color3.fromRGB(170, 45, 45)
 
-print("[Delta Hub] Route Editor listo · frames:", #(S.routeCFrames or {}))
+print("[Delta Hub] Route Editor HW · frames:", maxIdx())
