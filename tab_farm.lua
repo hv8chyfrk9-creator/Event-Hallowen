@@ -1,4 +1,4 @@
--- DELTA HUB tab_farm: cerebro + UI + fixes
+-- DELTA HUB tab_farm: cerebro + UI + player + events + extras
 local S = getgenv().DeltaHub
 if type(S) ~= "table" then return end
 
@@ -48,6 +48,16 @@ local function runFile(name, label, pct)
 	return true
 end
 
+local function showUI()
+	pcall(function()
+		if S.UI.MainFrame then S.UI.MainFrame.Visible = true end
+		if S.UI.Sidebar then S.UI.Sidebar.Visible = true end
+		if S.UI.FloatingLogo then S.UI.FloatingLogo.Visible = false end
+		if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Farm" end
+		if S.UI.FarmPage then S.UI.FarmPage.Visible = true end
+	end)
+end
+
 if not runFile("farm_brain.lua", "Cargando cerebro (movimiento)...", 51) then return end
 if not (S.Brain and S.Brain.startRoute) then
 	setProgress(52, "Error", "Cerebro incompleto")
@@ -65,23 +75,23 @@ if not (S.UI and S.UI.ContentArea) then
 	return
 end
 reportOk("Hub UI listo")
+showUI() -- CRÍTICO: mostrar ya
 setProgress(58, "Farm", "Pestaña Farm lista")
 
 task.spawn(function()
-	task.wait(0.15)
-	setProgress(60, "Farm", "Cargando pestaña Player...")
-	local body, herr = http("tab_player.lua")
-	if not body then
-		setProgress(62, "Error", "No descargo tab_player")
-		reportError("descarga tab_player.lua", herr)
-		return
+	task.wait(0.1)
+	runFile("tab_player.lua", "Cargando Player...", 62)
+	task.wait(0.1)
+	runFile("tab_events.lua", "Cargando Events...", 70)
+	task.wait(0.1)
+	runFile("tab_extras.lua", "Cargando Extras...", 80)
+	task.wait(0.1)
+	runFile("runtime_fixes.lua", "Parches UI...", 90)
+	showUI()
+	S.scriptReady = true
+	setProgress(100, "Listo", "Delta Hub activo")
+	if S.fadeAndDestroyLoading then
+		task.delay(0.4, function() S.fadeAndDestroyLoading() end)
 	end
-	local fn, lerr = loadstring(body)
-	if not fn then reportError("loadstring tab_player", tostring(lerr)) return end
-	local ok, runErr = pcall(fn)
-	if not ok then reportError("ejecutar tab_player", tostring(runErr)) return end
-	reportOk("tab_player OK")
-	-- fixes de paginas / keycaps al final de la cadena UI basica
-	task.wait(0.5)
-	runFile("runtime_fixes.lua", "Aplicando parches UI...", 64)
+	reportOk("Carga completa")
 end)
