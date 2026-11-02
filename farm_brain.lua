@@ -1,4 +1,6 @@
--- DELTA HUB farm_brain Halloween (hitbox 20x20x20 + tsunami predicción)
+-- DELTA HUB farm_brain Halloween
+-- Hitbox 20x20x20: 1s al inicio, solo activa en recorrido
+-- Muerte = fin del lap (si infinite → reinicia desde cero)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -23,6 +25,9 @@ F.delayTime = F.delayTime or 0
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 
 B.pendingEvent = nil
+B._leftStartBox = false
+B._hitboxActive = false
+B._lastLapDied = false
 
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
@@ -104,7 +109,14 @@ local function ensureStartHitbox(cf)
 	return box
 end
 
+local function destroyHitbox()
+	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
+	if folder then pcall(function() folder:Destroy() end) end
+	B._hitboxActive = false
+end
+
 local function playerInHitbox(hrp, box)
+	if not B._hitboxActive then return false end
 	if not hrp or not box or not box.Parent then return false end
 	local rel = box.CFrame:PointToObjectSpace(hrp.Position)
 	local half = box.Size * 0.5
@@ -116,9 +128,11 @@ function B.stopRoute(hard)
 	B.routeRunning = false
 	B.busy = false
 	B._leftStartBox = false
+	B._hitboxActive = false
 	F._ignoreTsunami = false
 	F._waitPassTarget = nil
 	F._trailMode = false
+	destroyHitbox()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	clearBV(hrp)
@@ -162,10 +176,14 @@ local function goCollectPending()
 end
 
 local function runOneLap()
+	B._lastLapDied = false
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart", 5)
 	local hum = char:WaitForChild("Humanoid", 5)
-	if not hrp or not hum or hum.Health <= 0 then return false end
+	if not hrp or not hum or hum.Health <= 0 then
+		B._lastLapDied = true
+		return false
+	end
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(true) end
 
 	local reward = selectedWinReward()
@@ -178,6 +196,7 @@ local function runOneLap()
 	local startCf = activeRoute[1]
 	local hitbox = ensureStartHitbox(startCf)
 	B._leftStartBox = false
+	B._hitboxActive = false
 
 	local bv = hrp:FindFirstChildOfClass("BodyVelocity")
 	if not bv then
@@ -186,9 +205,27 @@ local function runOneLap()
 		bv.P = 1250
 		bv.Parent = hrp
 	end
+
 	hrp.CFrame = startCf
 	hrp.AssemblyLinearVelocity = Vector3.zero
-	task.wait(0.12)
+	task.wait(1) -- 1s para registrar adentro de la hitbox
+	if not F.routeRunning then return false end
+	hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then
+		B._lastLapDied = true
+		return false
+	end
+	bv = hrp:FindFirstChildOfClass("BodyVelocity")
+	if not bv then
+		bv = Instance.new("BodyVelocity")
+		bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+		bv.P = 1250
+		bv.Parent = hrp
+	end
+
+	B._hitboxActive = true
+	B._leftStartBox = false
 
 	local wbName = F.selectedRealName or "WinBlock1"
 	local targetRouteIndex = #activeRoute
@@ -212,41 +249,55 @@ local function runOneLap()
 		if not F.routeRunning then break end
 		if i > targetRouteIndex then break end
 
-		if not B._leftStartBox and hrp and not playerInHitbox(hrp, hitbox) then
+		hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then
+			B._lastLapDied = true
+			clearBV(hrp)
+			if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+			B._hitboxActive = false
+			notify("Muerte: recorrido terminado")
+			return false
+		end
+		hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then B._lastLapDied = true; return false end
+
+		if not B._leftStartBox and not playerInHitbox(hrp, hitbox) then
 			B._leftStartBox = true
 		end
 
-		if hum.Health <= 0 then
-			if S.waitAliveHrp then
-				hrp = S.waitAliveHrp(activeRoute[math.max(1, i - 1)])
-				hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-				if hrp then
-					bv = hrp:FindFirstChildOfClass("BodyVelocity")
-					if not bv then
-						bv = Instance.new("BodyVelocity")
-						bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-						bv.Parent = hrp
-					end
-				else
-					return false
-				end
-			else
-				return false
-			end
-		end
 		if tick() - lastWbSearch >= 1 then
 			lastWbSearch = tick()
 			searchWin()
 			if i > targetRouteIndex then break end
 		end
+
 		local targetPos = activeRoute[i].Position
 		F._nextRoutePos = targetPos
 		local guard = 0
-		while hrp and hrp.Parent and (hrp.Position - targetPos).Magnitude > 2.5 and F.routeRunning and hum and hum.Health > 0 and guard < 600 do
+		while hrp and hrp.Parent and (hrp.Position - targetPos).Magnitude > 2.5 and F.routeRunning and guard < 600 do
 			guard = guard + 1
+			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 then
+				B._lastLapDied = true
+				clearBV(hrp)
+				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				B._hitboxActive = false
+				notify("Muerte: recorrido terminado")
+				return false
+			end
+			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if not hrp then B._lastLapDied = true; return false end
+
 			if not B._leftStartBox and not playerInHitbox(hrp, hitbox) then
 				B._leftStartBox = true
 			end
+			if B._leftStartBox and playerInHitbox(hrp, hitbox) then
+				clearBV(hrp)
+				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				notify("Llegaste a meta (hitbox)")
+				return true
+			end
+
 			if tick() - lastWbSearch >= 1 then
 				lastWbSearch = tick()
 				searchWin()
@@ -259,15 +310,14 @@ local function runOneLap()
 			if S.tsunamiDangerSpeed then
 				spd = select(1, S.tsunamiDangerSpeed(hrp, spd, targetPos))
 			end
-			-- Hold por predicción: no avanzar hasta que pase el tsunami
-			if F._waitPassTarget then
-				bv.Velocity = Vector3.zero
-				RunService.Heartbeat:Wait()
-				continue
-			end
 			if F._tsunamiSkipNext then
 				F._tsunamiSkipNext = false
 				break
+			end
+			if not bv or not bv.Parent then
+				bv = Instance.new("BodyVelocity")
+				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+				bv.Parent = hrp
 			end
 			if dist > 0.05 then bv.Velocity = (targetPos - hrp.Position).Unit * spd else bv.Velocity = Vector3.zero end
 			RunService.Heartbeat:Wait()
@@ -279,6 +329,14 @@ local function runOneLap()
 	if winPos and hrp and F.routeRunning then
 		local t0 = tick()
 		while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 8 and F.routeRunning do
+			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 then
+				B._lastLapDied = true
+				clearBV(hrp)
+				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				B._hitboxActive = false
+				return false
+			end
 			if not bv or not bv.Parent then
 				bv = Instance.new("BodyVelocity")
 				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
@@ -286,6 +344,7 @@ local function runOneLap()
 			end
 			bv.Velocity = (winPos - hrp.Position).Unit * 20
 			RunService.Heartbeat:Wait()
+			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		end
 		if bv then bv.Velocity = Vector3.zero end
 	end
@@ -293,9 +352,15 @@ local function runOneLap()
 	clearBV(hrp)
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
 
-	if F.routeRunning and B._leftStartBox then
+	if F.routeRunning and B._leftStartBox and B._hitboxActive then
 		local tEnd = tick()
 		while F.routeRunning and tick() - tEnd < 25 do
+			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 then
+				B._lastLapDied = true
+				B._hitboxActive = false
+				return false
+			end
 			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if hrp and playerInHitbox(hrp, hitbox) then break end
 			task.wait(0.08)
@@ -311,6 +376,8 @@ function B.startRoute()
 	B.routeRunning = true
 	B.busy = true
 	B._leftStartBox = false
+	B._hitboxActive = false
+	B._lastLapDied = false
 	F._waitPassTarget = nil
 	F._trailMode = false
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
@@ -318,18 +385,35 @@ function B.startRoute()
 		repeat
 			runOneLap()
 			if not F.routeRunning then break end
-			if B.pendingEvent then goCollectPending() end
-			if F.infinite and F.delayTime and F.delayTime > 0 then
-				local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode)) or S.routeCFrames
-				local startCf = activeRoute and activeRoute[1]
-				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-				if hrp and startCf then
-					pcall(function()
-						hrp.CFrame = startCf
-						hrp.AssemblyLinearVelocity = Vector3.zero
-					end)
+
+			if B._lastLapDied then
+				if F.infinite then
+					notify("Muerte: reiniciando recorrido infinito...")
+					local t0 = tick()
+					while tick() - t0 < 8 do
+						local c = player.Character
+						local h = c and c:FindFirstChildOfClass("Humanoid")
+						if h and h.Health > 0 and c:FindFirstChild("HumanoidRootPart") then break end
+						task.wait(0.2)
+					end
+					task.wait(0.4)
+				else
+					break
 				end
-				task.wait(F.delayTime)
+			else
+				if B.pendingEvent then goCollectPending() end
+				if F.infinite and F.delayTime and F.delayTime > 0 then
+					local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode)) or S.routeCFrames
+					local startCf = activeRoute and activeRoute[1]
+					local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					if hrp and startCf then
+						pcall(function()
+							hrp.CFrame = startCf
+							hrp.AssemblyLinearVelocity = Vector3.zero
+						end)
+					end
+					task.wait(F.delayTime)
+				end
 			end
 		until not F.infinite or not F.routeRunning
 		B.stopRoute(false)
@@ -374,4 +458,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo (hitbox 20 + tsunami pred)")
+print("[Delta Hub] farm_brain listo (hitbox 1s + muerte)")
