@@ -1,5 +1,4 @@
--- DELTA HUB farm_brain Halloween
--- Hitbox 20x20x20 + tsunami forceHoldPos
+-- DELTA HUB farm_brain Halloween (sin tsunami)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -128,10 +127,6 @@ function B.stopRoute(hard)
 	B.busy = false
 	B._leftStartBox = false
 	B._hitboxActive = false
-	F._ignoreTsunami = false
-	F._waitPassTarget = nil
-	F._trailMode = false
-	F._forceHoldPos = nil
 	destroyHitbox()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -185,9 +180,6 @@ local function runOneLap()
 		return false
 	end
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(true) end
-
-	local reward = selectedWinReward()
-	F._ignoreTsunami = (reward <= 10)
 
 	local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode))
 	if not activeRoute or #activeRoute == 0 then activeRoute = S.routeCFrames end
@@ -272,7 +264,6 @@ local function runOneLap()
 		end
 
 		local targetPos = activeRoute[i].Position
-		F._nextRoutePos = targetPos
 		local guard = 0
 		while hrp and hrp.Parent and F.routeRunning and guard < 900 do
 			guard = guard + 1
@@ -298,45 +289,24 @@ local function runOneLap()
 				return true
 			end
 
-			-- Objetivo real: hold del tsunami o el CFrame de la ruta
-			local aimPos = targetPos
-			if F._forceHoldPos then
-				aimPos = F._forceHoldPos
-			end
-
-			local dist = (hrp.Position - aimPos).Magnitude
-
-			-- Si NO hay hold y ya llegamos al CF de ruta → salir del while
-			if not F._forceHoldPos and dist <= 2.5 then break end
+			local dist = (hrp.Position - targetPos).Magnitude
+			if dist <= 2.5 then break end
 
 			if tick() - lastWbSearch >= 1 then
 				lastWbSearch = tick()
 				searchWin()
-				if i > targetRouteIndex and not F._forceHoldPos then break end
+				if i > targetRouteIndex then break end
 			end
 
 			local nextD = activeRoute[i + 1] and (activeRoute[i + 1].Position - targetPos).Magnitude
 			local spd = approachSpeed(dist, nextD)
-			F._nextRoutePos = aimPos
-			if S.tsunamiDangerSpeed then
-				spd = select(1, S.tsunamiDangerSpeed(hrp, spd, targetPos))
-			end
-			-- Re-leer hold (puede haberse actualizado en dangerSpeed / loop)
-			if F._forceHoldPos then
-				aimPos = F._forceHoldPos
-				dist = (hrp.Position - aimPos).Magnitude
-			end
-			if F._tsunamiSkipNext then
-				F._tsunamiSkipNext = false
-				break
-			end
 			if not bv or not bv.Parent then
 				bv = Instance.new("BodyVelocity")
 				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
 				bv.Parent = hrp
 			end
 			if dist > 0.05 and spd > 0.5 then
-				bv.Velocity = (aimPos - hrp.Position).Unit * spd
+				bv.Velocity = (targetPos - hrp.Position).Unit * spd
 			else
 				bv.Velocity = Vector3.zero
 			end
@@ -398,9 +368,6 @@ function B.startRoute()
 	B._leftStartBox = false
 	B._hitboxActive = false
 	B._lastLapDied = false
-	F._waitPassTarget = nil
-	F._trailMode = false
-	F._forceHoldPos = nil
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
 	task.spawn(function()
 		repeat
@@ -466,16 +433,4 @@ function B.isBusy()
 	return B.busy or B.routeRunning
 end
 
-task.spawn(function()
-	local base = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
-	local ok, body = pcall(function() return game:HttpGet(base .. "tab_farm_tsunami.lua") end)
-	if ok and type(body) == "string" and #body > 50 then
-		local head = string.lower(string.sub(body, 1, 80))
-		if not string.find(head, "<html", 1, true) then
-			local fn = loadstring(body)
-			if fn then pcall(fn) end
-		end
-	end
-end)
-
-print("[Delta Hub] farm_brain listo (hold tsunami)")
+print("[Delta Hub] farm_brain listo (sin tsunami)")
