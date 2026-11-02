@@ -1,4 +1,5 @@
--- DELTA HUB farm_brain Halloween (sin tsunami)
+-- DELTA HUB farm_brain Halloween
+-- Noclip solo después de CF16 · tsunami rays
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -26,28 +27,19 @@ B.pendingEvent = nil
 B._leftStartBox = false
 B._hitboxActive = false
 B._lastLapDied = false
+B._noclipOn = false
+
+local NOCLIP_AFTER_CF = 16 -- noclip solo después de este índice de ruta
 
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
 	pcall(function() print("[Brain]", msg) end)
 end
 
-local function selectedWinReward()
-	local name = F.selectedRealName or ""
-	local blocks = S.orderedWinBlocks or {}
-	for _, info in ipairs(blocks) do
-		if info.real == name then
-			local d = tostring(info.display or "")
-			local num = d:match("([%d%.]+)")
-			local n = tonumber(num) or 0
-			if d:upper():find("K") then n = n * 1000 end
-			if d:upper():find("M") then n = n * 1e6 end
-			return n
-		end
-	end
-	local idx = tonumber(name:match("(%d+)")) or 99
-	local defaults = { [1]=1,[2]=3,[3]=10,[4]=20,[5]=50,[6]=100,[7]=150,[8]=300,[9]=500,[10]=1000 }
-	return defaults[idx] or 999
+local function setNoclip(on)
+	if B._noclipOn == on then return end
+	B._noclipOn = on
+	if S.Signals.SetNoclip then S.Signals.SetNoclip(on) end
 end
 
 local function approachSpeed(distance, nextDist)
@@ -127,11 +119,12 @@ function B.stopRoute(hard)
 	B.busy = false
 	B._leftStartBox = false
 	B._hitboxActive = false
+	F._forceHoldPos = nil
 	destroyHitbox()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	clearBV(hrp)
-	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+	setNoclip(false)
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(false) end
 	if hard then notify("Recorrido detenido") end
 end
@@ -172,6 +165,7 @@ end
 
 local function runOneLap()
 	B._lastLapDied = false
+	B._noclipOn = false
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart", 5)
 	local hum = char:WaitForChild("Humanoid", 5)
@@ -179,7 +173,8 @@ local function runOneLap()
 		B._lastLapDied = true
 		return false
 	end
-	if S.Signals.SetNoclip then S.Signals.SetNoclip(true) end
+	-- NO noclip al inicio
+	setNoclip(false)
 
 	local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode))
 	if not activeRoute or #activeRoute == 0 then activeRoute = S.routeCFrames end
@@ -241,11 +236,18 @@ local function runOneLap()
 		if not F.routeRunning then break end
 		if i > targetRouteIndex then break end
 
+		-- Noclip solo después de CF16
+		if i > NOCLIP_AFTER_CF then
+			setNoclip(true)
+		else
+			setNoclip(false)
+		end
+
 		hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if not hum or hum.Health <= 0 then
 			B._lastLapDied = true
 			clearBV(hrp)
-			if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+			setNoclip(false)
 			B._hitboxActive = false
 			notify("Muerte: recorrido terminado")
 			return false
@@ -264,14 +266,15 @@ local function runOneLap()
 		end
 
 		local targetPos = activeRoute[i].Position
+		F._nextRoutePos = targetPos
 		local guard = 0
-		while hrp and hrp.Parent and F.routeRunning and guard < 900 do
+		while hrp and hrp.Parent and F.routeRunning and guard < 1200 do
 			guard = guard + 1
 			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then
 				B._lastLapDied = true
 				clearBV(hrp)
-				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				setNoclip(false)
 				B._hitboxActive = false
 				notify("Muerte: recorrido terminado")
 				return false
@@ -284,29 +287,49 @@ local function runOneLap()
 			end
 			if B._leftStartBox and playerInHitbox(hrp, hitbox) then
 				clearBV(hrp)
-				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				setNoclip(false)
 				notify("Llegaste a meta (hitbox)")
 				return true
 			end
 
-			local dist = (hrp.Position - targetPos).Magnitude
-			if dist <= 2.5 then break end
+			local aimPos = targetPos
+			if F._forceHoldPos then
+				aimPos = F._forceHoldPos
+			end
+
+			local dist = (hrp.Position - aimPos).Magnitude
+
+			if not F._forceHoldPos and dist <= 2.5 then break end
 
 			if tick() - lastWbSearch >= 1 then
 				lastWbSearch = tick()
 				searchWin()
-				if i > targetRouteIndex then break end
+				if i > targetRouteIndex and not F._forceHoldPos then break end
 			end
 
 			local nextD = activeRoute[i + 1] and (activeRoute[i + 1].Position - targetPos).Magnitude
 			local spd = approachSpeed(dist, nextD)
+			F._nextRoutePos = aimPos
+
+			if S.tsunamiDangerSpeed then
+				spd = select(1, S.tsunamiDangerSpeed(hrp, spd, targetPos))
+			end
+			if F._forceHoldPos then
+				aimPos = F._forceHoldPos
+				dist = (hrp.Position - aimPos).Magnitude
+			end
+			if F._tsunamiSkipNext then
+				F._tsunamiSkipNext = false
+				break
+			end
+
 			if not bv or not bv.Parent then
 				bv = Instance.new("BodyVelocity")
 				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
 				bv.Parent = hrp
 			end
 			if dist > 0.05 and spd > 0.5 then
-				bv.Velocity = (targetPos - hrp.Position).Unit * spd
+				bv.Velocity = (aimPos - hrp.Position).Unit * spd
 			else
 				bv.Velocity = Vector3.zero
 			end
@@ -314,6 +337,8 @@ local function runOneLap()
 		end
 		if bv then bv.Velocity = Vector3.zero end
 	end
+
+	setNoclip(true) -- ya pasamos la zona peligrosa al ir al win
 
 	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
 	if winPos and hrp and F.routeRunning then
@@ -323,7 +348,7 @@ local function runOneLap()
 			if not hum or hum.Health <= 0 then
 				B._lastLapDied = true
 				clearBV(hrp)
-				if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+				setNoclip(false)
 				B._hitboxActive = false
 				return false
 			end
@@ -340,7 +365,7 @@ local function runOneLap()
 	end
 
 	clearBV(hrp)
-	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
+	setNoclip(false)
 
 	if F.routeRunning and B._leftStartBox and B._hitboxActive then
 		local tEnd = tick()
@@ -368,6 +393,7 @@ function B.startRoute()
 	B._leftStartBox = false
 	B._hitboxActive = false
 	B._lastLapDied = false
+	F._forceHoldPos = nil
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
 	task.spawn(function()
 		repeat
@@ -433,4 +459,16 @@ function B.isBusy()
 	return B.busy or B.routeRunning
 end
 
-print("[Delta Hub] farm_brain listo (sin tsunami)")
+task.spawn(function()
+	local base = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+	local ok, body = pcall(function() return game:HttpGet(base .. "tab_farm_tsunami.lua") end)
+	if ok and type(body) == "string" and #body > 50 then
+		local head = string.lower(string.sub(body, 1, 80))
+		if not string.find(head, "<html", 1, true) then
+			local fn = loadstring(body)
+			if fn then pcall(fn) end
+		end
+	end
+end)
+
+print("[Delta Hub] farm_brain listo (noclip post-CF16 + tsunami rays)")
