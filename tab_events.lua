@@ -1,4 +1,4 @@
--- DELTA HUB tab_events (self-contained)
+-- DELTA HUB tab_events Halloween (nombre EXACTO; BattleCoin + número 1-4000)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
@@ -29,11 +29,21 @@ E.priority = E.priority or { "chocolate", "battlecoin", "xp", "candy", "specialk
 local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 local NEXT_URL = BASE .. "tab_extras.lua"
 
+-- Nombres EXACTOS (no contains). BattleCoin se maneja aparte con número.
+local EXACT = {
+	chocolate = { "ChocolateHunt", "Chocolate Hunt" },
+	candy = { "EventCoin", "CandyCorn", "Candy Corn" },
+	xp = { "ElectrifiedKeycap", "XPEventKey", "XP Event Key" },
+	specialkeys = { "SpecialKey", "Special Key" },
+}
+
 local function setProgress(p, t, s)
 	if S.setProgress then S.setProgress(p, t, s) end
 end
 local function notify(t)
-	if S.notify then S.notify(t) else warn("[Delta Hub]", t) end
+	if S.Farm and S.Farm.notify then S.Farm.notify(t)
+	elseif S.notify then S.notify(t)
+	else warn("[Delta Hub]", t) end
 end
 local function corner(p, r)
 	local c = Instance.new("UICorner")
@@ -182,7 +192,6 @@ modeBtn.MouseButton1Click:Connect(function()
 	modeBtn.Text = "Modo: " .. E.collectMode
 end)
 
--- Helpers
 local function objectPosition(obj)
 	if not obj then return nil end
 	if obj:IsA("BasePart") then return obj.Position end
@@ -192,14 +201,21 @@ local function objectPosition(obj)
 	return p and p.Position
 end
 
-local function eventKind(name)
+local function exactKind(name)
 	if not name then return nil end
-	local n = name:lower()
-	if n:find("chocolate") and n:find("hunt") then return "chocolate" end
-	if n:find("chocolatehunt") then return "chocolate" end
-	if n:find("eventcoin") then return "candy" end
-	if n:find("coinbattlecoin") or n:find("battlecoin") then return "coin" end
-	if n:find("electrifiedkeycap") then return "xp" end
+	-- BattleCoin siempre lleva número (1..4000)
+	local nstr = name:match("^BattleCoin(%d+)$")
+		or name:match("^CoinBattleCoin(%d+)$")
+		or name:match("^Battle Coin(%d+)$")
+	if nstr then
+		local n = tonumber(nstr)
+		if n and n >= 1 and n <= 4000 then return "coin" end
+	end
+	for kind, list in pairs(EXACT) do
+		for _, exact in ipairs(list) do
+			if name == exact then return kind end
+		end
+	end
 	return nil
 end
 
@@ -211,12 +227,13 @@ local function findCandyPlane(obj)
 end
 
 local function rememberEvent(obj)
-	local kind = eventKind(obj.Name)
+	local kind = exactKind(obj.Name)
 	if not kind then return false end
 	if kind == "chocolate" and not E.chocolate then return false end
 	if kind == "candy" and not E.candy then return false end
 	if kind == "coin" and not E.coin then return false end
 	if kind == "xp" and not E.xp then return false end
+	if kind == "specialkeys" and not E.autoSpecialKeys then return false end
 	local target, pos = obj, objectPosition(obj)
 	if kind == "candy" then
 		local plane = findCandyPlane(obj)
@@ -227,6 +244,12 @@ local function rememberEvent(obj)
 	local id = tostring(target:GetFullName())
 	if E.seen[id] then return false end
 	E.seen[id] = true
+
+	if S.Brain and S.Brain.routeRunning and S.Brain.reportFoundEvent then
+		S.Brain.reportFoundEvent({ pos = pos, kind = kind, obj = target })
+		return true
+	end
+
 	table.insert(E.queue, { obj = target, pos = pos, kind = kind })
 	return true
 end
@@ -266,14 +289,17 @@ setProgress(85, "Events", "Bucles...")
 if not S._eventsLoopsStarted then
 	S._eventsLoopsStarted = true
 	local function anyOn()
-		return E.chocolate or E.candy or E.coin or E.xp
+		return E.chocolate or E.candy or E.coin or E.xp or E.autoSpecialKeys
 	end
 	task.spawn(function()
 		while true do
 			task.wait(E.searchInterval or 1)
 			if not anyOn() then E.searchInterval = 1; E.queue = {}; E.seen = {}; E.busy = false; continue end
 			local farm = S.Farm
-			if farm and farm.routeRunning then continue end
+			if farm and farm.routeRunning then
+				for _, obj in ipairs(Workspace:GetDescendants()) do rememberEvent(obj) end
+				continue
+			end
 			if E.busy then continue end
 			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if not hrp then continue end
@@ -291,18 +317,10 @@ if not S._eventsLoopsStarted then
 				local item = table.remove(E.queue, 1)
 				if not item or not item.pos then continue end
 				if item.obj and not item.obj.Parent then continue end
+				if item.obj and exactKind(item.obj.Name) == nil then continue end
 				local pos = objectPosition(item.obj) or item.pos
 				goToPos(hrp, pos)
 				task.wait(0.35)
-				for _, obj in ipairs(Workspace:GetDescendants()) do
-					local p = objectPosition(obj)
-					if p and (p - pos).Magnitude <= 50 then rememberEvent(obj) end
-				end
-				local tW = tick()
-				while tick() - tW < 1 and anyOn() do
-					task.wait(0.3)
-					for _, obj in ipairs(Workspace:GetDescendants()) do rememberEvent(obj) end
-				end
 				hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 				if not hrp then break end
 			end
@@ -324,7 +342,7 @@ if not S._eventsLoopsStarted then
 				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
 					for _, obj in pairs(Workspace:GetDescendants()) do
-						if obj.Name:find("SpecialKey") and (obj:IsA("BasePart") or obj:IsA("Model")) then
+						if exactKind(obj.Name) == "specialkeys" and (obj:IsA("BasePart") or obj:IsA("Model")) then
 							processSpecialKey(obj, hrp)
 							break
 						end
@@ -350,4 +368,4 @@ task.spawn(function()
 	if not okRun then warn("[Delta Hub] tab_extras run", runErr) end
 end)
 
-print("[Delta Hub] Events listo")
+print("[Delta Hub] Events listo (exact + BattleCoinN)")
