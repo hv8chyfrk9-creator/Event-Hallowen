@@ -1,9 +1,11 @@
--- tab_farm_tsunami.lua v9
--- Hold:
---   normal: CF uno antes del mas cercano al +10
---   fast:   el CF mas cercano al +10
+-- tab_farm_tsunami.lua v10
+-- Raycasts fijos en ejes de MUNDO (no giran con el personaje)
+-- Front x5 20 studs (0/±15/±30), Right 30, Left 40 · visibles 0.5
+-- Strip TouchInterest continuo · hold CF13 / trail / advance
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local S = getgenv().DeltaHub
@@ -11,50 +13,89 @@ if type(S) ~= "table" then return end
 S.Farm = S.Farm or {}
 local F = S.Farm
 
-F._tsunamiHoldUntil = 0
-F._tsunamiPos = nil
-F._tsunamiVel = Vector3.zero
-F._tsunamiSpeed = 0
-F._tsunamiDir = Vector3.zero
-F._tsunamiDist = nil
-F._lastTsunamiPos = nil
-F._lastTsunamiTick = nil
-F._tsunamiInFront = false
-F._tsunamiBehind = false
-F._tsunamiOnNormal = false
-F._tsunamiOnFastOnly = false
-F._cf10Index = nil
-F._holdAtIndex = nil
-F._forceHoldPos = nil
+local VIS = true
+local FRONT_LEN = 20
+local RIGHT_LEN = 30
+local LEFT_LEN = 40
+local FRONT_ANGLES = { 0, 15, -15, 30, -30 }
 
-local NEAR_CF = 22
-local FRONT_RANGE = 80
+-- Ejes fijos de mundo (no siguen LookVector del personaje)
+local WORLD_FWD = Vector3.new(0, 0, 1)
+local WORLD_RIGHT = Vector3.new(1, 0, 0)
+local WORLD_LEFT = Vector3.new(-1, 0, 0)
+
+local oldFolder = Workspace:FindFirstChild("DeltaHubTsunamiRays")
+if oldFolder then pcall(function() oldFolder:Destroy() end) end
+local folder = Instance.new("Folder")
+folder.Name = "DeltaHubTsunamiRays"
+folder.Parent = Workspace
+
+local rayParts = {}
+local function makeRayPart(name, color)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Material = Enum.Material.Neon
+	p.Color = color
+	p.Transparency = VIS and 0.5 or 1
+	p.Size = Vector3.new(0.25, 0.25, 1)
+	p.Parent = folder
+	rayParts[name] = p
+	return p
+end
+
+for i = 1, #FRONT_ANGLES do
+	makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70))
+end
+makeRayPart("Right", Color3.fromRGB(70, 170, 255))
+makeRayPart("Left", Color3.fromRGB(70, 255, 120))
+
+local function setRayVisual(part, origin, dir, len, hit)
+	if not part then return end
+	local d = dir.Magnitude > 1e-4 and dir.Unit or Vector3.new(0, 0, 1)
+	local useLen = hit and hit.Distance or len
+	useLen = math.max(useLen, 0.15)
+	part.Size = Vector3.new(0.22, 0.22, useLen)
+	part.CFrame = CFrame.new(origin + d * (useLen * 0.5), origin + d * useLen)
+	part.Transparency = VIS and (hit and 0.3 or 0.5) or 1
+end
+
+local function rotY(v, deg)
+	local r = math.rad(deg)
+	local c, s = math.cos(r), math.sin(r)
+	return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
+end
+
+local cachedTsunami = nil
+local lastScan = 0
 
 local function findTsunami()
+	if cachedTsunami and cachedTsunami.Parent then return cachedTsunami end
+	if tick() - lastScan < 0.35 then return cachedTsunami end
+	lastScan = tick()
+	cachedTsunami = nil
 	local stage = Workspace:FindFirstChild("TsunamiStage4", true)
 	if stage then
 		for _, d in ipairs(stage:GetDescendants()) do
-			local n = string.lower(d.Name)
-			if n == "tsunami" or (string.find(n, "tsunami", 1, true) and (d:IsA("BasePart") or d:IsA("Model"))) then
+			if string.lower(d.Name) == "tsunami" then
+				cachedTsunami = d
 				return d
 			end
 		end
-		if stage:IsA("BasePart") or stage:IsA("Model") then return stage end
-	end
-	local folder = Workspace:FindFirstChild("NPC & Piege") or Workspace:FindFirstChild("NPC & Piege", true)
-	if folder then
-		for _, d in ipairs(folder:GetDescendants()) do
-			if string.find(string.lower(d.Name), "tsunami", 1, true) then return d end
-		end
 	end
 	for _, d in ipairs(Workspace:GetDescendants()) do
-		local n = string.lower(d.Name)
-		if n == "tsunami" or string.find(n, "tsunami", 1, true) then return d end
+		if string.lower(d.Name) == "tsunami" then
+			cachedTsunami = d
+			return d
+		end
 	end
 	return nil
 end
 
-local function tsunamiWorldPos(t)
+local function tsunamiPos(t)
 	if not t then return nil end
 	if t:IsA("BasePart") then return t.Position end
 	local ok, piv = pcall(function() return t:GetPivot() end)
@@ -63,207 +104,142 @@ local function tsunamiWorldPos(t)
 	return p and p.Position
 end
 
-local function findPlus10WinPos()
-	local blocks = S.orderedWinBlocks or {}
-	local realName = "WinBlock3"
-	for _, info in ipairs(blocks) do
-		local d = tostring(info.display or "")
-		if d:find("+10") and not d:upper():find("K") and not d:upper():find("M") then
-			realName = info.real
-			break
-		end
-	end
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if obj.Name == realName then
-			if obj:IsA("BasePart") then return obj.Position, realName end
-			local ok, piv = pcall(function() return obj:GetPivot() end)
-			if ok and piv then return piv.Position, realName end
-			local p = obj:FindFirstChildWhichIsA("BasePart", true)
-			if p then return p.Position, realName end
-		end
-	end
-	return nil, realName
-end
-
-local function getActiveRoute()
-	if S.getRouteCFramesForMode then
-		local list = select(1, S.getRouteCFramesForMode(F.routeMode or "normal"))
-		if list and #list > 0 then return list end
-	end
-	return S.routeCFrames
-end
-
-local function getRouteModes()
-	return S.routeModes or {}
-end
-
--- Devuelve: closest (real), holdNormal = closest-1
-local function computeCf10Index(route)
-	local pos10 = select(1, findPlus10WinPos())
-	if not pos10 or not route or #route == 0 then return nil, nil end
-	local bestI, bestD = 1, math.huge
-	for i = 1, #route do
-		local d = (route[i].Position - pos10).Magnitude
-		if d < bestD then bestD, bestI = d, i end
-	end
-	local holdNormal = math.max(1, bestI - 1)
-	return bestI, holdNormal
-end
-
-local function classifyTsunamiVsRoute(tPos, route)
-	if not tPos or not route then return false, false end
-	local modes = getRouteModes()
-	local onNormal, onFast = false, false
-	local full = S.routeCFrames or route
-	for i = 1, #full do
-		local cf = full[i]
-		if cf and (cf.Position - tPos).Magnitude <= NEAR_CF then
-			local m = modes[i]
-			if m then
-				if m.normal then onNormal = true end
-				if m.fast then onFast = true end
-			else
-				onNormal = true
+local function stripTouchInterest(root)
+	if not root then return end
+	pcall(function()
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("TouchTransmitter") or d.ClassName == "TouchInterest" then
+				pcall(function() d:Destroy() end)
 			end
 		end
-	end
-	return onNormal, (onFast and not onNormal)
+		if root:IsA("BasePart") then
+			for _, c in ipairs(root:GetChildren()) do
+				if c:IsA("TouchTransmitter") or c.ClassName == "TouchInterest" then
+					pcall(function() c:Destroy() end)
+				end
+			end
+		end
+	end)
 end
 
-task.spawn(function()
-	while true do
-		task.wait(0.08)
-		local char = player.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		local t = findTsunami()
-		local tPos = tsunamiWorldPos(t)
-		local now = tick()
-		local route = getActiveRoute()
+local function isTsunamiPart(inst)
+	if not inst then return false end
+	local n = string.lower(inst.Name)
+	if n == "tsunami" then return true end
+	local p = inst.Parent
+	while p and p ~= Workspace do
+		local pn = string.lower(p.Name)
+		if pn == "tsunami" or string.find(pn, "tsunamistage", 1, true) then return true end
+		p = p.Parent
+	end
+	return false
+end
 
-		if tPos then
-			if F._lastTsunamiPos and F._lastTsunamiTick then
-				local dt = now - F._lastTsunamiTick
-				if dt > 0.02 and dt < 1 then
-					local instVel = (tPos - F._lastTsunamiPos) / dt
-					F._tsunamiVel = F._tsunamiVel:Lerp(instVel, 0.4)
-					F._tsunamiSpeed = F._tsunamiVel.Magnitude
-					if F._tsunamiSpeed > 0.5 then F._tsunamiDir = F._tsunamiVel.Unit end
-				end
-			end
-			F._lastTsunamiPos = tPos
-			F._lastTsunamiTick = now
-			F._tsunamiPos = tPos
+local function rayHitTsunami(origin, dir, len)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local exclude = { folder }
+	if player.Character then table.insert(exclude, player.Character) end
+	params.FilterDescendantsInstances = exclude
+	params.IgnoreWater = true
+	local result = Workspace:Raycast(origin, dir.Unit * len, params)
+	if result and isTsunamiPart(result.Instance) then return result end
+	return nil
+end
 
-			if hrp then
-				F._tsunamiDist = (hrp.Position - tPos).Magnitude
-				local moveDir = hrp.CFrame.LookVector
-				if type(F._nextRoutePos) == "Vector3" then
-					local to = F._nextRoutePos - hrp.Position
-					if to.Magnitude > 0.5 then moveDir = to.Unit end
-				end
-				local flatTo = Vector3.new(tPos.X - hrp.Position.X, 0, tPos.Z - hrp.Position.Z)
-				local flatMove = Vector3.new(moveDir.X, 0, moveDir.Z)
-				if flatTo.Magnitude > 0.1 and flatMove.Magnitude > 0.1 then
-					local align = flatMove.Unit:Dot(flatTo.Unit)
-					F._tsunamiInFront = align > 0.12
-					F._tsunamiBehind = align < -0.12
-				else
-					F._tsunamiInFront = false
-					F._tsunamiBehind = false
-				end
-			end
+F._forceHoldPos = nil
+F._tsunamiHoldAt13 = false
+F._tsunamiTrailPos = nil
+F._tsunamiSkipNext = false
 
-			local onN, onlyF = classifyTsunamiVsRoute(tPos, route)
-			F._tsunamiOnNormal = onN
-			F._tsunamiOnFastOnly = onlyF
+function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
+	if not hrp then return baseSpeed or 0, false end
 
-			local closest, holdNormal = computeCf10Index(route)
-			F._cf10Index = holdNormal
+	local origin = hrp.Position + Vector3.new(0, 1.5, 0)
+	local ts = findTsunami()
+	if ts then stripTouchInterest(ts) end
 
-			F._holdAtIndex = nil
-			F._forceHoldPos = nil
-			if closest and holdNormal and route and F.routeRunning and not F._ignoreTsunami then
-				local playerBefore = true
-				if hrp then
-					local bestI, bestD = 1, math.huge
-					for i = 1, #route do
-						local d = (route[i].Position - hrp.Position).Magnitude
-						if d < bestD then bestD, bestI = d, i end
-					end
-					playerBefore = bestI <= closest
-				end
+	local cf13 = S.routeCFrames and S.routeCFrames[13]
+	local nearZone = cf13 and (hrp.Position - cf13.Position).Magnitude < 250
 
-				if playerBefore then
-					if onN then
-						F._holdAtIndex = holdNormal
-						F._forceHoldPos = route[holdNormal].Position
-					elseif onlyF then
-						-- fast: el mas cercano real (atrasado respecto al viejo closest+1)
-						F._holdAtIndex = closest
-						F._forceHoldPos = route[closest].Position
-					end
-				end
-			end
-		else
-			F._tsunamiPos = nil
-			F._tsunamiDist = nil
-			F._tsunamiInFront = false
-			F._tsunamiBehind = false
-			F._tsunamiOnNormal = false
-			F._tsunamiOnFastOnly = false
-			F._holdAtIndex = nil
-			F._forceHoldPos = nil
+	local frontHit = false
+	for i, ang in ipairs(FRONT_ANGLES) do
+		local dir = rotY(WORLD_FWD, ang)
+		local hit = rayHitTsunami(origin, dir, FRONT_LEN)
+		setRayVisual(rayParts["Front_" .. i], origin, dir, FRONT_LEN, hit)
+		if hit then frontHit = true end
+	end
+
+	local rightHit = rayHitTsunami(origin, WORLD_RIGHT, RIGHT_LEN)
+	setRayVisual(rayParts.Right, origin, WORLD_RIGHT, RIGHT_LEN, rightHit)
+
+	local leftHit = rayHitTsunami(origin, WORLD_LEFT, LEFT_LEN)
+	setRayVisual(rayParts.Left, origin, WORLD_LEFT, LEFT_LEN, leftHit)
+
+	if not nearZone or not F.routeRunning then
+		F._forceHoldPos = nil
+		F._tsunamiHoldAt13 = false
+		F._tsunamiTrailPos = nil
+		return baseSpeed or 0, false
+	end
+
+	-- Frente → quedarse en CF13
+	if frontHit and cf13 then
+		F._tsunamiHoldAt13 = true
+		F._forceHoldPos = cf13.Position
+		F._tsunamiTrailPos = nil
+		F._tsunamiSkipNext = false
+		local dist = (hrp.Position - cf13.Position).Magnitude
+		if dist > 3 then
+			return math.min(baseSpeed or 200, 80), true
 		end
+		return 0, true
+	end
+	F._tsunamiHoldAt13 = false
+
+	-- Derecha → trail 30 studs detrás (mundo -Z)
+	if rightHit then
+		local tpos = tsunamiPos(ts)
+		if tpos then
+			local behind = Vector3.new(tpos.X, hrp.Position.Y, tpos.Z) - WORLD_FWD * 30
+			F._tsunamiTrailPos = behind
+			F._forceHoldPos = behind
+			F._tsunamiSkipNext = false
+			return math.min(baseSpeed or 200, 55), true
+		end
+	end
+
+	-- Izquierda toca → avanzar (siguiente frame)
+	if leftHit then
+		F._forceHoldPos = nil
+		F._tsunamiTrailPos = nil
+		F._tsunamiSkipNext = true
+		return baseSpeed or 0, false
+	end
+
+	-- Derecha ya no ve tsunami → avanzar
+	if not rightHit and F._tsunamiTrailPos then
+		F._forceHoldPos = nil
+		F._tsunamiTrailPos = nil
+		F._tsunamiSkipNext = true
+		return baseSpeed or 0, false
+	end
+
+	if not rightHit and not frontHit then
+		F._forceHoldPos = nil
+	end
+
+	return baseSpeed or 0, false
+end
+
+RunService.Heartbeat:Connect(function()
+	local ts = findTsunami()
+	if ts then stripTouchInterest(ts) end
+	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		-- actualiza rayos siempre (debug visible)
+		S.tsunamiDangerSpeed(hrp, 0, nil)
 	end
 end)
 
-function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
-	if not hrp then return baseSpeed, false end
-	if F._ignoreTsunami then
-		F._tsunamiSkipNext = false
-		return baseSpeed, false
-	end
-
-	local now = tick()
-	if now < (F._tsunamiHoldUntil or 0) then
-		return 0, true
-	end
-
-	local d = F._tsunamiDist
-
-	if F._forceHoldPos then
-		local holdPos = F._forceHoldPos
-		local distHold = (hrp.Position - holdPos).Magnitude
-		if distHold > 3.5 then
-			F._nextRoutePos = holdPos
-			F._tsunamiSkipNext = false
-			return math.min(baseSpeed or 200, 90), true
-		end
-		F._tsunamiSkipNext = false
-		return 0, true
-	end
-
-	if not d or not F._tsunamiPos then
-		return baseSpeed, false
-	end
-
-	if F._tsunamiBehind and not F._tsunamiInFront then
-		F._tsunamiSkipNext = false
-		return baseSpeed, false
-	end
-
-	if F._tsunamiInFront and d <= FRONT_RANGE then
-		if d <= 30 then return 0, true end
-		if d <= 50 then return math.min(baseSpeed or 200, 10), true end
-		return math.min(baseSpeed or 200, 35), true
-	end
-
-	if d <= 22 then
-		return math.min(baseSpeed or 200, 12), true
-	end
-
-	F._tsunamiSkipNext = false
-	return baseSpeed, false
-end
-
-print("[Delta Hub] Tsunami v9 (hold CF-1 limpio)")
+print("[Delta Hub] Tsunami v10 rays (mundo fijo, visibles)")
