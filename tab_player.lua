@@ -1,6 +1,6 @@
 -- ==========================================
 -- DELTA HUB - Event Hallowen - tab_player.lua
--- Solo pestaÃ±a Player | 62.5% -> 75%
+-- Si speed/jump OFF: no tocar WalkSpeed/JumpPower
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -33,7 +33,7 @@ local function setProgress(p, title, sub)
 	if S.setProgress then S.setProgress(p, title, sub) end
 end
 
-setProgress(64, "Player", "Creando pestaÃ±a Player...")
+setProgress(64, "Player", "Creando pestaña Player...")
 
 local function corner(parent, r)
 	local c = Instance.new("UICorner")
@@ -143,7 +143,6 @@ local function createScrollingPage(parent)
 	return sc
 end
 
--- Page
 local playerPage = createScrollingPage(S.UI.ContentArea)
 S.UI.Pages = S.UI.Pages or {}
 S.UI.Pages.Player = playerPage
@@ -175,7 +174,6 @@ end)
 
 setProgress(68, "Player", "Movimiento...")
 
--- Movement section
 local moveBody = section(playerPage, "Movimiento", 1)
 
 local _, paintSpeed, speedHit = makeSwitch(moveBody, "Speed boost", 1)
@@ -187,14 +185,7 @@ end)
 speedHit.MouseButton1Click:Connect(function()
 	P.speedEnabled = not P.speedEnabled
 	paintSpeed(P.speedEnabled)
-	if not P.speedEnabled then
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			-- devolver control al juego (valor tipico)
-			hum.WalkSpeed = 16
-		end
-	end
+	-- Si OFF: NO forzar WalkSpeed = 16; el juego controla
 end)
 paintSpeed(P.speedEnabled)
 
@@ -207,14 +198,7 @@ end)
 jumpHit.MouseButton1Click:Connect(function()
 	P.jumpEnabled = not P.jumpEnabled
 	paintJump(P.jumpEnabled)
-	if not P.jumpEnabled then
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.UseJumpPower = true
-			hum.JumpPower = 50
-		end
-	end
+	-- Si OFF: NO forzar JumpPower = 50; el juego controla
 end)
 paintJump(P.jumpEnabled)
 
@@ -232,7 +216,6 @@ infHit.MouseButton1Click:Connect(function()
 end)
 paintInf(P.infJumpEnabled)
 
--- Signal para Farm (noclip en recorrido)
 S.Signals.SetNoclip = function(on)
 	P.noclipEnabled = on and true or false
 	paintNoclip(P.noclipEnabled)
@@ -240,7 +223,6 @@ end
 
 setProgress(72, "Player", "Loops de movimiento...")
 
--- Apply loops
 if not S._playerLoopsStarted then
 	S._playerLoopsStarted = true
 	RunService.Stepped:Connect(function()
@@ -251,10 +233,12 @@ if not S._playerLoopsStarted then
 			if P.speedEnabled then
 				hum.WalkSpeed = P.customSpeed
 			end
+			-- si speed OFF: no tocar WalkSpeed
 			if P.jumpEnabled then
 				hum.UseJumpPower = true
 				hum.JumpPower = P.customJump
 			end
+			-- si jump OFF: no tocar JumpPower
 		end
 		if P.noclipEnabled then
 			for _, part in pairs(char:GetDescendants()) do
@@ -275,7 +259,6 @@ if not S._playerLoopsStarted then
 	end)
 end
 
--- Init humanoid defaults from character if present
 do
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
