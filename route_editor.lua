@@ -1,7 +1,8 @@
 -- Delta Hub · Route Editor Halloween
--- Carga TODA la ruta (route_data + ext + ext2) para editar
+-- Carga ruta + bolitas verdes (número + modos)
 
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
 
@@ -11,7 +12,6 @@ S.Farm = S.Farm or {}
 
 local BASE = "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
 
--- Siempre recargar rutas Halloween en el editor
 S.routeCFrames = {}
 S.routeModes = {}
 do
@@ -51,13 +51,87 @@ F.routeSpeed = F.routeSpeed or 250
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 F.selectedDisplayName = F.selectedDisplayName or "+1 Wins"
 
-local totalCF = 0
-for i = 1, 500 do
-	if S.routeCFrames[i] then totalCF = i end
+local function maxIdx()
+	local m = 0
+	for i = 1, 500 do if S.routeCFrames[i] then m = i end end
+	return m
 end
 
+local totalCF = maxIdx()
+
+-- limpiar UI y folder de marcadores previos
 local old = pg:FindFirstChild("DeltaRouteEditor")
 if old then old:Destroy() end
+local oldFolder = Workspace:FindFirstChild("DeltaRouteMarkers")
+if oldFolder then oldFolder:Destroy() end
+
+local markerFolder = Instance.new("Folder")
+markerFolder.Name = "DeltaRouteMarkers"
+markerFolder.Parent = Workspace
+
+local markers = {} -- [i] = part
+local markersVisible = true
+
+local function modeTag(i)
+	local m = S.routeModes[i] or {}
+	local t = {}
+	if m.normal then table.insert(t, "N") end
+	if m.fast then table.insert(t, "F") end
+	if m.super then table.insert(t, "S") end
+	return #t > 0 and table.concat(t, "") or "?"
+end
+
+local function makeMarker(i, cf)
+	if markers[i] then pcall(function() markers[i]:Destroy() end) end
+	local p = Instance.new("Part")
+	p.Name = "CF_" .. i
+	p.Shape = Enum.PartType.Ball
+	p.Size = Vector3.new(2.2, 2.2, 2.2)
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Material = Enum.Material.Neon
+	p.Color = Color3.fromRGB(40, 220, 80)
+	p.Transparency = 0.25
+	p.CFrame = CFrame.new(cf.Position)
+	p.Parent = markerFolder
+
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "Label"
+	bb.Size = UDim2.new(0, 70, 0, 36)
+	bb.StudsOffset = Vector3.new(0, 2.4, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 400
+	bb.Parent = p
+
+	local txt = Instance.new("TextLabel")
+	txt.Parent = bb
+	txt.Size = UDim2.new(1, 0, 1, 0)
+	txt.BackgroundTransparency = 1
+	txt.Font = Enum.Font.GothamBold
+	txt.TextSize = 12
+	txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+	txt.TextStrokeTransparency = 0.3
+	txt.Text = tostring(i) .. "\n" .. modeTag(i)
+
+	markers[i] = p
+	return p
+end
+
+local function rebuildMarkers()
+	for _, ch in ipairs(markerFolder:GetChildren()) do
+		pcall(function() ch:Destroy() end)
+	end
+	table.clear(markers)
+	for i = 1, maxIdx() do
+		local cf = S.routeCFrames[i]
+		if cf then makeMarker(i, cf) end
+	end
+	markerFolder.Parent = markersVisible and Workspace or nil
+end
+
+rebuildMarkers()
 
 local function corner(o, r)
 	local c = Instance.new("UICorner")
@@ -76,8 +150,8 @@ sg.Parent = pg
 local main = Instance.new("Frame")
 main.Name = "Main"
 main.Parent = sg
-main.Size = UDim2.new(0, 280, 0, 340)
-main.Position = UDim2.new(0.5, -140, 0.5, -170)
+main.Size = UDim2.new(0, 280, 0, 360)
+main.Position = UDim2.new(0.5, -140, 0.5, -180)
 main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 main.BackgroundTransparency = 0.08
 main.Active = true
@@ -241,12 +315,6 @@ local function notify(msg)
 	end)
 end
 
-local function maxIdx()
-	local m = 0
-	for i = 1, 500 do if S.routeCFrames[i] then m = i end end
-	return m
-end
-
 -- ===== TAB FRAMES =====
 local tabF, pageF = makeTab("Frames", 1)
 label(pageF, "Nº CFrame (1.." .. tostring(maxIdx()) .. ")", 1)
@@ -256,7 +324,7 @@ infoLbl.Parent = pageF
 infoLbl.BackgroundTransparency = 1
 infoLbl.Size = UDim2.new(1, 0, 0, 40)
 infoLbl.Font = Enum.Font.Code
-infoLbl.Text = "Total: " .. maxIdx() .. " CFrames cargados"
+infoLbl.Text = "Total: " .. maxIdx() .. " CF · bolitas ON"
 infoLbl.TextColor3 = Color3.fromRGB(160, 180, 160)
 infoLbl.TextSize = 10
 infoLbl.TextWrapped = true
@@ -271,7 +339,9 @@ local zBox = box(pageF, "Z", 7)
 local loadBtn = btn(pageF, "Cargar frame", 8, Color3.fromRGB(50, 70, 110))
 local applyBtn = btn(pageF, "Aplicar XYZ", 9, Color3.fromRGB(40, 100, 55))
 local tpBtn = btn(pageF, "TP a este frame", 10, Color3.fromRGB(90, 60, 120))
-local exportBtn = btn(pageF, "Exportar ruta completa", 11, Color3.fromRGB(140, 50, 50))
+local ballsBtn = btn(pageF, "Bolitas: ON", 11, Color3.fromRGB(30, 90, 50))
+local rebuildBtn = btn(pageF, "Refrescar bolitas", 12, Color3.fromRGB(40, 40, 50))
+local exportBtn = btn(pageF, "Exportar ruta completa", 13, Color3.fromRGB(140, 50, 50))
 
 local function getIdx()
 	local n = tonumber(idxBox.Text)
@@ -288,14 +358,8 @@ local function showFrame(i)
 	xBox.Text = string.format("%.4f", p.X)
 	yBox.Text = string.format("%.4f", p.Y)
 	zBox.Text = string.format("%.4f", p.Z)
-	local m = S.routeModes[i] or {}
-	local tags = {}
-	if m.normal then table.insert(tags, "N") end
-	if m.fast then table.insert(tags, "F") end
-	if m.super then table.insert(tags, "S") end
 	infoLbl.Text = string.format("CF %d / %d  modes:%s\n%.3f, %.3f, %.3f",
-		i, maxIdx(), (#tags > 0 and table.concat(tags, "") or "?"),
-		p.X, p.Y, p.Z)
+		i, maxIdx(), modeTag(i), p.X, p.Y, p.Z)
 end
 
 loadBtn.MouseButton1Click:Connect(function()
@@ -310,9 +374,10 @@ applyBtn.MouseButton1Click:Connect(function()
 	if not i then notify("Índice inválido") return end
 	local x, y, z = tonumber(xBox.Text), tonumber(yBox.Text), tonumber(zBox.Text)
 	if not x or not y or not z then notify("XYZ inválidos") return end
-	local old = S.routeCFrames[i]
-	local look = old and old.LookVector or Vector3.new(0, 0, -1)
+	local oldCf = S.routeCFrames[i]
+	local look = oldCf and oldCf.LookVector or Vector3.new(0, 0, -1)
 	S.routeCFrames[i] = CFrame.new(Vector3.new(x, y, z), Vector3.new(x, y, z) + look)
+	makeMarker(i, S.routeCFrames[i])
 	showFrame(i)
 	notify("CF " .. i .. " actualizado")
 end)
@@ -329,6 +394,24 @@ tpBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+ballsBtn.MouseButton1Click:Connect(function()
+	markersVisible = not markersVisible
+	if markersVisible then
+		markerFolder.Parent = Workspace
+		ballsBtn.Text = "Bolitas: ON"
+		ballsBtn.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
+	else
+		markerFolder.Parent = nil
+		ballsBtn.Text = "Bolitas: OFF"
+		ballsBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 40)
+	end
+end)
+
+rebuildBtn.MouseButton1Click:Connect(function()
+	rebuildMarkers()
+	notify("Bolitas refrescadas")
+end)
+
 exportBtn.MouseButton1Click:Connect(function()
 	local maxn = maxIdx()
 	if maxn == 0 then notify("Sin frames") return end
@@ -337,12 +420,11 @@ exportBtn.MouseButton1Click:Connect(function()
 		local cf = S.routeCFrames[i]
 		if not cf then continue end
 		local p = cf.Position
-		local m = S.routeModes[i] or {}
-		local tag = (m.normal and "N" or "") .. (m.fast and "F" or "") .. (m.super and "S" or "")
+		local tag = modeTag(i)
 		local comma = (i < maxn) and "," or ""
 		table.insert(lines, string.format(
 			"\tCFrame.new(%.6f, %.6f, %.6f)%s -- CF %d modes:%s",
-			p.X, p.Y, p.Z, comma, i, tag ~= "" and tag or "?"
+			p.X, p.Y, p.Z, comma, i, tag
 		))
 	end
 	table.insert(lines, "}")
@@ -454,4 +536,4 @@ end
 pageF.Visible = true
 tabF.BackgroundColor3 = Color3.fromRGB(170, 45, 45)
 
-print("[Delta Hub] Route Editor HW · frames:", maxIdx())
+print("[Delta Hub] Route Editor HW · frames:", maxIdx(), "· markers ON")
