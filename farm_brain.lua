@@ -1,6 +1,5 @@
 -- DELTA HUB farm_brain Halloween
--- Hitbox 20x20x20: 1s al inicio, solo activa en recorrido
--- Muerte = fin del lap (si infinite → reinicia desde cero)
+-- Hitbox 20x20x20 + tsunami forceHoldPos
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -132,6 +131,7 @@ function B.stopRoute(hard)
 	F._ignoreTsunami = false
 	F._waitPassTarget = nil
 	F._trailMode = false
+	F._forceHoldPos = nil
 	destroyHitbox()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -208,7 +208,7 @@ local function runOneLap()
 
 	hrp.CFrame = startCf
 	hrp.AssemblyLinearVelocity = Vector3.zero
-	task.wait(1) -- 1s para registrar adentro de la hitbox
+	task.wait(1)
 	if not F.routeRunning then return false end
 	hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -274,7 +274,7 @@ local function runOneLap()
 		local targetPos = activeRoute[i].Position
 		F._nextRoutePos = targetPos
 		local guard = 0
-		while hrp and hrp.Parent and (hrp.Position - targetPos).Magnitude > 2.5 and F.routeRunning and guard < 600 do
+		while hrp and hrp.Parent and F.routeRunning and guard < 900 do
 			guard = guard + 1
 			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then
@@ -298,17 +298,33 @@ local function runOneLap()
 				return true
 			end
 
+			-- Objetivo real: hold del tsunami o el CFrame de la ruta
+			local aimPos = targetPos
+			if F._forceHoldPos then
+				aimPos = F._forceHoldPos
+			end
+
+			local dist = (hrp.Position - aimPos).Magnitude
+
+			-- Si NO hay hold y ya llegamos al CF de ruta → salir del while
+			if not F._forceHoldPos and dist <= 2.5 then break end
+
 			if tick() - lastWbSearch >= 1 then
 				lastWbSearch = tick()
 				searchWin()
-				if i > targetRouteIndex then break end
+				if i > targetRouteIndex and not F._forceHoldPos then break end
 			end
-			local dist = (hrp.Position - targetPos).Magnitude
+
 			local nextD = activeRoute[i + 1] and (activeRoute[i + 1].Position - targetPos).Magnitude
 			local spd = approachSpeed(dist, nextD)
-			F._nextRoutePos = targetPos
+			F._nextRoutePos = aimPos
 			if S.tsunamiDangerSpeed then
 				spd = select(1, S.tsunamiDangerSpeed(hrp, spd, targetPos))
+			end
+			-- Re-leer hold (puede haberse actualizado en dangerSpeed / loop)
+			if F._forceHoldPos then
+				aimPos = F._forceHoldPos
+				dist = (hrp.Position - aimPos).Magnitude
 			end
 			if F._tsunamiSkipNext then
 				F._tsunamiSkipNext = false
@@ -319,7 +335,11 @@ local function runOneLap()
 				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
 				bv.Parent = hrp
 			end
-			if dist > 0.05 then bv.Velocity = (targetPos - hrp.Position).Unit * spd else bv.Velocity = Vector3.zero end
+			if dist > 0.05 and spd > 0.5 then
+				bv.Velocity = (aimPos - hrp.Position).Unit * spd
+			else
+				bv.Velocity = Vector3.zero
+			end
 			RunService.Heartbeat:Wait()
 		end
 		if bv then bv.Velocity = Vector3.zero end
@@ -380,12 +400,12 @@ function B.startRoute()
 	B._lastLapDied = false
 	F._waitPassTarget = nil
 	F._trailMode = false
+	F._forceHoldPos = nil
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
 	task.spawn(function()
 		repeat
 			runOneLap()
 			if not F.routeRunning then break end
-
 			if B._lastLapDied then
 				if F.infinite then
 					notify("Muerte: reiniciando recorrido infinito...")
@@ -458,4 +478,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo (hitbox 1s + muerte)")
+print("[Delta Hub] farm_brain listo (hold tsunami)")
