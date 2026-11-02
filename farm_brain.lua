@@ -1,4 +1,4 @@
--- DELTA HUB farm_brain Halloween (hitbox 20x20x20, sin CLAIM_WAIT fijo)
+-- DELTA HUB farm_brain Halloween (hitbox 20x20x20 + tsunami predicción)
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -80,7 +80,6 @@ local function clearBV(hrp)
 	hrp.AssemblyLinearVelocity = Vector3.zero
 end
 
--- Hitbox 20x20x20 no colisionable en el primer CFrame
 local function ensureStartHitbox(cf)
 	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
 	if not folder then
@@ -118,6 +117,8 @@ function B.stopRoute(hard)
 	B.busy = false
 	B._leftStartBox = false
 	F._ignoreTsunami = false
+	F._waitPassTarget = nil
+	F._trailMode = false
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	clearBV(hrp)
@@ -239,6 +240,7 @@ local function runOneLap()
 			if i > targetRouteIndex then break end
 		end
 		local targetPos = activeRoute[i].Position
+		F._nextRoutePos = targetPos
 		local guard = 0
 		while hrp and hrp.Parent and (hrp.Position - targetPos).Magnitude > 2.5 and F.routeRunning and hum and hum.Health > 0 and guard < 600 do
 			guard = guard + 1
@@ -253,7 +255,16 @@ local function runOneLap()
 			local dist = (hrp.Position - targetPos).Magnitude
 			local nextD = activeRoute[i + 1] and (activeRoute[i + 1].Position - targetPos).Magnitude
 			local spd = approachSpeed(dist, nextD)
-			if S.tsunamiDangerSpeed then spd = select(1, S.tsunamiDangerSpeed(hrp, spd)) end
+			F._nextRoutePos = targetPos
+			if S.tsunamiDangerSpeed then
+				spd = select(1, S.tsunamiDangerSpeed(hrp, spd, targetPos))
+			end
+			-- Hold por predicción: no avanzar hasta que pase el tsunami
+			if F._waitPassTarget then
+				bv.Velocity = Vector3.zero
+				RunService.Heartbeat:Wait()
+				continue
+			end
 			if F._tsunamiSkipNext then
 				F._tsunamiSkipNext = false
 				break
@@ -282,7 +293,6 @@ local function runOneLap()
 	clearBV(hrp)
 	if S.Signals.SetNoclip then S.Signals.SetNoclip(false) end
 
-	-- Fin natural: re-entrar a la hitbox del primer CFrame
 	if F.routeRunning and B._leftStartBox then
 		local tEnd = tick()
 		while F.routeRunning and tick() - tEnd < 25 do
@@ -301,6 +311,8 @@ function B.startRoute()
 	B.routeRunning = true
 	B.busy = true
 	B._leftStartBox = false
+	F._waitPassTarget = nil
+	F._trailMode = false
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
 	task.spawn(function()
 		repeat
@@ -362,4 +374,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo (hitbox 20)")
+print("[Delta Hub] farm_brain listo (hitbox 20 + tsunami pred)")
