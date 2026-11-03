@@ -26,11 +26,16 @@ X.antiLagOn = X.antiLagOn or false
 X.antiOpts = X.antiOpts or { decorations = true, halloween = true, keycaps = true }
 X.antiSelOpen = X.antiSelOpen or false
 
+local BASE = S.BASE_URL or "https://raw.githubusercontent.com/hv8chyfrk9-creator/Event-Hallowen/main/"
+local NEXT_URL = BASE .. "tab_config.lua"
+
 local function setProgress(p, title, sub)
 	if S.setProgress then S.setProgress(p, title, sub) end
 end
 local function notify(text)
-	if S.notify then S.notify(text) else warn("[Delta Hub]", text) end
+	if S.Farm and S.Farm.notify then S.Farm.notify(text)
+	elseif S.notify then S.notify(text)
+	else warn("[Delta Hub]", text) end
 end
 local function corner(parent, r)
 	local c = Instance.new("UICorner")
@@ -76,6 +81,7 @@ local function makeToggleRow(parent, text, order, get, set)
 	btn.MouseButton1Click:Connect(function()
 		set(not get())
 		refresh()
+		if S.Config and S.Config.markDirty then S.Config.markDirty() end
 	end)
 	return row, btn, refresh
 end
@@ -260,6 +266,7 @@ for i, info in ipairs(optLabels) do
 			if antiSwitchRefresh then antiSwitchRefresh() end
 			notify("Anti lag OFF (cambiaste opciones)")
 		end
+		if S.Config and S.Config.markDirty then S.Config.markDirty() end
 	end)
 end
 
@@ -327,7 +334,7 @@ bW.TextColor3 = Color3.fromRGB(255, 255, 255)
 bW.Font = Enum.Font.Gotham
 bW.TextSize = 12
 corner(bW, 5)
-bW.MouseButton1Click:Connect(function() X.renderWhite = true; applyRender() end)
+bW.MouseButton1Click:Connect(function() X.renderWhite = true; applyRender(); if S.Config and S.Config.markDirty then S.Config.markDirty() end end)
 local bB = Instance.new("TextButton")
 bB.Parent = colorRow
 bB.Size = UDim2.new(1, 0, 0, 26)
@@ -337,7 +344,7 @@ bB.TextColor3 = Color3.fromRGB(255, 255, 255)
 bB.Font = Enum.Font.Gotham
 bB.TextSize = 12
 corner(bB, 5)
-bB.MouseButton1Click:Connect(function() X.renderWhite = false; applyRender() end)
+bB.MouseButton1Click:Connect(function() X.renderWhite = false; applyRender(); if S.Config and S.Config.markDirty then S.Config.markDirty() end end)
 
 makeToggleRow(screenBody, "No render", 1, function() return X.renderOn end, function(v)
 	X.renderOn = v
@@ -414,13 +421,26 @@ if not S._extrasLoopsStarted then
 	end)
 end
 
-setProgress(99, "Extras", "Finalizando...")
-task.spawn(function()
-	if S.fadeAndDestroyLoading then S.fadeAndDestroyLoading() end
-	if S.UI.MainFrame then S.UI.MainFrame.Visible = true end
-	if S.UI.Sidebar then S.UI.Sidebar.Visible = true end
-	if S.UI.SectionTitle then S.UI.SectionTitle.Text = "Farm" end
-	S.scriptReady = true
-	notify("Hallowen world listo")
-	setProgress(100, "Listo", "Delta Hub activo")
-end)
+setProgress(97, "Extras", "Cargando Configuración...")
+local function loadNext(url)
+	local ok, body = pcall(function() return game:HttpGet(url) end)
+	if not ok or type(body) ~= "string" or #body < 40 then
+		warn("[Delta Hub] no se pudo bajar tab_config")
+		-- fallback: finalizar sin config
+		if S.fadeAndDestroyLoading then S.fadeAndDestroyLoading() end
+		S.scriptReady = true
+		return
+	end
+	local head = string.lower(string.sub(body, 1, 80))
+	if string.find(head, "<html", 1, true) then
+		warn("[Delta Hub] tab_config HTML")
+		if S.fadeAndDestroyLoading then S.fadeAndDestroyLoading() end
+		S.scriptReady = true
+		return
+	end
+	local fn, err = loadstring(body)
+	if not fn then warn("[Delta Hub] tab_config loadstring", err); S.scriptReady = true; return end
+	local okRun, runErr = pcall(fn)
+	if not okRun then warn("[Delta Hub] tab_config run", runErr) end
+end
+loadNext(NEXT_URL)
