@@ -1,5 +1,5 @@
 -- DELTA HUB farm_brain Halloween
--- Noclip solo después de CF16 · tsunami rays
+-- Sin hitbox de meta · 3s tras último CF · reinicio si infinito
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -24,12 +24,17 @@ F.delayTime = F.delayTime or 0
 F.selectedRealName = F.selectedRealName or "WinBlock1"
 
 B.pendingEvent = nil
-B._leftStartBox = false
-B._hitboxActive = false
 B._lastLapDied = false
 B._noclipOn = false
 
-local NOCLIP_AFTER_CF = 16 -- noclip solo después de este índice de ruta
+local NOCLIP_AFTER_CF = 16
+local POST_ROUTE_WAIT = 3 -- segundos tras último CF / win para reiniciar
+
+-- limpiar hitbox vieja si quedó
+pcall(function()
+	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
+	if folder then folder:Destroy() end
+end)
 
 local function notify(msg)
 	if S.Farm and S.Farm.notify then S.Farm.notify(msg) return end
@@ -75,52 +80,11 @@ local function clearBV(hrp)
 	hrp.AssemblyLinearVelocity = Vector3.zero
 end
 
-local function ensureStartHitbox(cf)
-	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
-	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "DeltaHubHWHitbox"
-		folder.Parent = Workspace
-	end
-	local box = folder:FindFirstChild("StartFinishBox")
-	if not box then
-		box = Instance.new("Part")
-		box.Name = "StartFinishBox"
-		box.Size = Vector3.new(20, 20, 20)
-		box.Anchored = true
-		box.CanCollide = false
-		box.CanQuery = true
-		box.CanTouch = false
-		box.Transparency = 1
-		box.Parent = folder
-	end
-	box.Size = Vector3.new(20, 20, 20)
-	box.CFrame = cf
-	return box
-end
-
-local function destroyHitbox()
-	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
-	if folder then pcall(function() folder:Destroy() end) end
-	B._hitboxActive = false
-end
-
-local function playerInHitbox(hrp, box)
-	if not B._hitboxActive then return false end
-	if not hrp or not box or not box.Parent then return false end
-	local rel = box.CFrame:PointToObjectSpace(hrp.Position)
-	local half = box.Size * 0.5
-	return math.abs(rel.X) <= half.X and math.abs(rel.Y) <= half.Y and math.abs(rel.Z) <= half.Z
-end
-
 function B.stopRoute(hard)
 	F.routeRunning = false
 	B.routeRunning = false
 	B.busy = false
-	B._leftStartBox = false
-	B._hitboxActive = false
 	F._forceHoldPos = nil
-	destroyHitbox()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	clearBV(hrp)
@@ -173,7 +137,6 @@ local function runOneLap()
 		B._lastLapDied = true
 		return false
 	end
-	-- NO noclip al inicio
 	setNoclip(false)
 
 	local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode))
@@ -181,9 +144,6 @@ local function runOneLap()
 	if not activeRoute or #activeRoute == 0 then notify("Sin CFrames") return false end
 
 	local startCf = activeRoute[1]
-	local hitbox = ensureStartHitbox(startCf)
-	B._leftStartBox = false
-	B._hitboxActive = false
 
 	local bv = hrp:FindFirstChildOfClass("BodyVelocity")
 	if not bv then
@@ -211,9 +171,6 @@ local function runOneLap()
 		bv.Parent = hrp
 	end
 
-	B._hitboxActive = true
-	B._leftStartBox = false
-
 	local wbName = F.selectedRealName or "WinBlock1"
 	local targetRouteIndex = #activeRoute
 	local winPos = nil
@@ -236,7 +193,6 @@ local function runOneLap()
 		if not F.routeRunning then break end
 		if i > targetRouteIndex then break end
 
-		-- Noclip solo después de CF16
 		if i > NOCLIP_AFTER_CF then
 			setNoclip(true)
 		else
@@ -248,16 +204,11 @@ local function runOneLap()
 			B._lastLapDied = true
 			clearBV(hrp)
 			setNoclip(false)
-			B._hitboxActive = false
 			notify("Muerte: recorrido terminado")
 			return false
 		end
 		hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then B._lastLapDied = true; return false end
-
-		if not B._leftStartBox and not playerInHitbox(hrp, hitbox) then
-			B._leftStartBox = true
-		end
 
 		if tick() - lastWbSearch >= 1 then
 			lastWbSearch = tick()
@@ -275,22 +226,11 @@ local function runOneLap()
 				B._lastLapDied = true
 				clearBV(hrp)
 				setNoclip(false)
-				B._hitboxActive = false
 				notify("Muerte: recorrido terminado")
 				return false
 			end
 			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if not hrp then B._lastLapDied = true; return false end
-
-			if not B._leftStartBox and not playerInHitbox(hrp, hitbox) then
-				B._leftStartBox = true
-			end
-			if B._leftStartBox and playerInHitbox(hrp, hitbox) then
-				clearBV(hrp)
-				setNoclip(false)
-				notify("Llegaste a meta (hitbox)")
-				return true
-			end
 
 			local aimPos = targetPos
 			if F._forceHoldPos then
@@ -298,7 +238,6 @@ local function runOneLap()
 			end
 
 			local dist = (hrp.Position - aimPos).Magnitude
-
 			if not F._forceHoldPos and dist <= 2.5 then break end
 
 			if tick() - lastWbSearch >= 1 then
@@ -338,18 +277,18 @@ local function runOneLap()
 		if bv then bv.Velocity = Vector3.zero end
 	end
 
-	setNoclip(true) -- ya pasamos la zona peligrosa al ir al win
+	setNoclip(true)
 
+	-- acercarse al WinBlock (rápido, no arrastrar a 20)
 	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
 	if winPos and hrp and F.routeRunning then
 		local t0 = tick()
-		while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 8 and F.routeRunning do
+		while hrp and hrp.Parent and (hrp.Position - winPos).Magnitude > 3 and tick() - t0 < 6 and F.routeRunning do
 			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then
 				B._lastLapDied = true
 				clearBV(hrp)
 				setNoclip(false)
-				B._hitboxActive = false
 				return false
 			end
 			if not bv or not bv.Parent then
@@ -357,7 +296,9 @@ local function runOneLap()
 				bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
 				bv.Parent = hrp
 			end
-			bv.Velocity = (winPos - hrp.Position).Unit * 20
+			local d = (winPos - hrp.Position).Magnitude
+			local spd = math.clamp(d * 2, 40, tonumber(F.routeSpeed) or 200)
+			bv.Velocity = (winPos - hrp.Position).Unit * spd
 			RunService.Heartbeat:Wait()
 			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		end
@@ -367,18 +308,17 @@ local function runOneLap()
 	clearBV(hrp)
 	setNoclip(false)
 
-	if F.routeRunning and B._leftStartBox and B._hitboxActive then
-		local tEnd = tick()
-		while F.routeRunning and tick() - tEnd < 25 do
+	-- 3 segundos para agarrar el win, luego la vuelta cuenta como terminada
+	if F.routeRunning then
+		notify("Win: esperando " .. POST_ROUTE_WAIT .. "s...")
+		local tWait = tick()
+		while F.routeRunning and tick() - tWait < POST_ROUTE_WAIT do
 			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then
 				B._lastLapDied = true
-				B._hitboxActive = false
 				return false
 			end
-			hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			if hrp and playerInHitbox(hrp, hitbox) then break end
-			task.wait(0.08)
+			task.wait(0.1)
 		end
 	end
 
@@ -390,8 +330,6 @@ function B.startRoute()
 	F.routeRunning = true
 	B.routeRunning = true
 	B.busy = true
-	B._leftStartBox = false
-	B._hitboxActive = false
 	B._lastLapDied = false
 	F._forceHoldPos = nil
 	if S.Farm and S.Farm.onRouteState then S.Farm.onRouteState(true) end
@@ -415,16 +353,8 @@ function B.startRoute()
 				end
 			else
 				if B.pendingEvent then goCollectPending() end
+				-- delay extra del usuario (si puso) entre vueltas infinitas
 				if F.infinite and F.delayTime and F.delayTime > 0 then
-					local activeRoute = select(1, S.getRouteCFramesForMode(F.routeMode)) or S.routeCFrames
-					local startCf = activeRoute and activeRoute[1]
-					local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-					if hrp and startCf then
-						pcall(function()
-							hrp.CFrame = startCf
-							hrp.AssemblyLinearVelocity = Vector3.zero
-						end)
-					end
 					task.wait(F.delayTime)
 				end
 			end
@@ -471,4 +401,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo (noclip post-CF16 + tsunami rays)")
+print("[Delta Hub] farm_brain listo (sin hitbox · 3s post-ruta)")
