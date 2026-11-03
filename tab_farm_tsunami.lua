@@ -1,7 +1,5 @@
--- tab_farm_tsunami.lua v14
--- Rojo  = FRENTE  · 40 studs · HOLD CF13 por 3s
--- Verde = IZQUIERDA · 60 studs (x2) · pausa 1s en el sitio cada vez que lo ve
--- Azul  = DERECHA · 120 studs · va directo a CF15
+-- tab_farm_tsunami.lua v14.1
+-- Rays invisibles · lógica igual v14
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -13,10 +11,10 @@ if type(S) ~= "table" then return end
 S.Farm = S.Farm or {}
 local F = S.Farm
 
-local VIS = true
+local VIS = false
 local FRONT_LEN = 40
-local GREEN_LEN = 60   -- izquierda, doble
-local BLUE_LEN = 120   -- derecha
+local GREEN_LEN = 60
+local BLUE_LEN = 120
 local FRONT_ANGLES = { 0, 15, -15, 30, -30 }
 local THICK = 0.25
 
@@ -40,19 +38,16 @@ local function makeRayPart(name, color)
 	p.CanTouch = false
 	p.Material = Enum.Material.Neon
 	p.Color = color
-	p.Transparency = VIS and 0.5 or 1
+	p.Transparency = 1
 	p.Size = Vector3.new(THICK, THICK, 1)
 	p.Parent = folder
 	rayParts[name] = p
 	return p
 end
 
-for i = 1, #FRONT_ANGLES do
-	makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70))
-end
--- INVERTIDO: verde izquierda, azul derecha
-makeRayPart("Left", Color3.fromRGB(70, 255, 120))  -- VERDE
-makeRayPart("Right", Color3.fromRGB(70, 170, 255)) -- AZUL
+for i = 1, #FRONT_ANGLES do makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70)) end
+makeRayPart("Left", Color3.fromRGB(70, 255, 120))
+makeRayPart("Right", Color3.fromRGB(70, 170, 255))
 
 local function setRayVisual(part, origin, dir, len, hit)
 	if not part then return end
@@ -61,7 +56,7 @@ local function setRayVisual(part, origin, dir, len, hit)
 	useLen = math.max(useLen, 0.2)
 	part.Size = Vector3.new(THICK, THICK, useLen)
 	part.CFrame = CFrame.new(origin + d * (useLen * 0.5), origin + d * useLen)
-	part.Transparency = VIS and (hit and 0.3 or 0.5) or 1
+	part.Transparency = 1
 end
 
 local function rotY(v, deg)
@@ -70,9 +65,7 @@ local function rotY(v, deg)
 	return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
 end
 
-local cachedTsunami = nil
-local lastScan = 0
-
+local cachedTsunami, lastScan = nil, 0
 local function findTsunami()
 	if cachedTsunami and cachedTsunami.Parent then return cachedTsunami end
 	if tick() - lastScan < 0.35 then return cachedTsunami end
@@ -81,17 +74,11 @@ local function findTsunami()
 	local stage = Workspace:FindFirstChild("TsunamiStage4", true)
 	if stage then
 		for _, d in ipairs(stage:GetDescendants()) do
-			if string.lower(d.Name) == "tsunami" then
-				cachedTsunami = d
-				return d
-			end
+			if string.lower(d.Name) == "tsunami" then cachedTsunami = d return d end
 		end
 	end
 	for _, d in ipairs(Workspace:GetDescendants()) do
-		if string.lower(d.Name) == "tsunami" then
-			cachedTsunami = d
-			return d
-		end
+		if string.lower(d.Name) == "tsunami" then cachedTsunami = d return d end
 	end
 	return nil
 end
@@ -100,24 +87,14 @@ local function stripTouchInterest(root)
 	if not root then return end
 	pcall(function()
 		for _, d in ipairs(root:GetDescendants()) do
-			if d:IsA("TouchTransmitter") or d.ClassName == "TouchInterest" then
-				pcall(function() d:Destroy() end)
-			end
-		end
-		if root:IsA("BasePart") then
-			for _, c in ipairs(root:GetChildren()) do
-				if c:IsA("TouchTransmitter") or c.ClassName == "TouchInterest" then
-					pcall(function() c:Destroy() end)
-				end
-			end
+			if d:IsA("TouchTransmitter") or d.ClassName == "TouchInterest" then pcall(function() d:Destroy() end) end
 		end
 	end)
 end
 
 local function isTsunamiPart(inst)
 	if not inst then return false end
-	local n = string.lower(inst.Name)
-	if n == "tsunami" then return true end
+	if string.lower(inst.Name) == "tsunami" then return true end
 	local p = inst.Parent
 	while p and p ~= Workspace do
 		local pn = string.lower(p.Name)
@@ -148,12 +125,10 @@ F._redWasHit = false
 
 function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	if not hrp then return baseSpeed or 0, false end
-
 	local now = tick()
 	local origin = hrp.Position + Vector3.new(0, 1.5, 0)
 	local ts = findTsunami()
 	if ts then stripTouchInterest(ts) end
-
 	local cf13 = S.routeCFrames and S.routeCFrames[13]
 	local cf15 = S.routeCFrames and S.routeCFrames[15]
 	local nearZone = cf13 and (hrp.Position - cf13.Position).Magnitude < 280
@@ -165,12 +140,8 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		setRayVisual(rayParts["Front_" .. i], origin, dir, FRONT_LEN, hit)
 		if hit then frontHit = true end
 	end
-
-	-- Verde = izquierda
 	local greenHit = rayHitTsunami(origin, WORLD_LEFT, GREEN_LEN)
 	setRayVisual(rayParts.Left, origin, WORLD_LEFT, GREEN_LEN, greenHit)
-
-	-- Azul = derecha
 	local blueHit = rayHitTsunami(origin, WORLD_RIGHT, BLUE_LEN)
 	setRayVisual(rayParts.Right, origin, WORLD_RIGHT, BLUE_LEN, blueHit)
 
@@ -182,8 +153,6 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		F._redWasHit = false
 		return baseSpeed or 0, false
 	end
-
-	-- Timers activos: seguir frenando
 	if now < (F._redHoldUntil or 0) and cf13 then
 		F._forceHoldPos = cf13.Position
 		local dist = (hrp.Position - cf13.Position).Magnitude
@@ -191,27 +160,17 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		return 0, true
 	end
 	if now < (F._greenPauseUntil or 0) then
-		-- quedarse en el sitio
 		F._forceHoldPos = F._greenPausePos or hrp.Position
 		return 0, true
 	end
-
-	-- ROJO: hold CF13 por 3 segundos (al detectar de nuevo / primer hit)
 	if frontHit and cf13 then
-		if not F._redWasHit then
-			F._redWasHit = true
-			F._redHoldUntil = now + 3
-		end
+		if not F._redWasHit then F._redWasHit = true F._redHoldUntil = now + 3 end
 		F._forceHoldPos = cf13.Position
 		F._tsunamiSkipNext = false
 		local dist = (hrp.Position - cf13.Position).Magnitude
 		if dist > 2.5 then return math.min(baseSpeed or 200, 70), true end
 		return 0, true
-	else
-		F._redWasHit = false
-	end
-
-	-- VERDE (izquierda): pausa 1s en el sitio cada vez que lo detecta
+	else F._redWasHit = false end
 	if greenHit then
 		if not F._greenWasHit then
 			F._greenWasHit = true
@@ -222,21 +181,11 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 			F._forceHoldPos = F._greenPausePos or hrp.Position
 			return 0, true
 		end
-		-- ya pasó el segundo: puede avanzar, pero si sigue viéndolo
-		-- al “borde” del ciclo se re-arma en el siguiente frame de detección
-		-- Re-disparar pausa solo cuando deja de ver y vuelve a ver
 		F._forceHoldPos = nil
 		return math.min(baseSpeed or 200, 50), false
 	else
-		-- dejó de verlo → reset para la próxima detección
-		if F._greenWasHit then
-			F._greenWasHit = false
-			F._greenPauseUntil = 0
-			F._forceHoldPos = nil
-		end
+		if F._greenWasHit then F._greenWasHit = false F._greenPauseUntil = 0 F._forceHoldPos = nil end
 	end
-
-	-- AZUL (derecha): directo a CF15
 	if blueHit then
 		if cf15 then
 			F._forceHoldPos = cf15.Position
@@ -248,11 +197,7 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 			return baseSpeed or 0, false
 		end
 	end
-
-	if not frontHit and not greenHit and not blueHit then
-		F._forceHoldPos = nil
-	end
-
+	if not frontHit and not greenHit and not blueHit then F._forceHoldPos = nil end
 	return baseSpeed or 0, false
 end
 
@@ -260,9 +205,7 @@ RunService.Heartbeat:Connect(function()
 	local ts = findTsunami()
 	if ts then stripTouchInterest(ts) end
 	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		S.tsunamiDangerSpeed(hrp, 0, nil)
-	end
+	if hrp then S.tsunamiDangerSpeed(hrp, 0, nil) end
 end)
 
-print("[Delta Hub] Tsunami v14 · verde izq 60 pausa1s / azul der CF15 / rojo hold3s")
+print("[Delta Hub] Tsunami v14.1 rays ocultos")
