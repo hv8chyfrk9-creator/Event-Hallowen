@@ -1,8 +1,7 @@
--- tab_farm_tsunami.lua v13
--- Rojo  = FRENTE  · longitud x2 (40) · HOLD CF13
--- Verde = DERECHA · longitud normal (30) · trail lento al LÍMITE del rayo
--- Azul  = IZQUIERDA · longitud x3 (120) · rápido al CF más cercano hacia la derecha
--- Grosor visual normal
+-- tab_farm_tsunami.lua v14
+-- Rojo  = FRENTE  · 40 studs · HOLD CF13 por 3s
+-- Verde = IZQUIERDA · 60 studs (x2) · pausa 1s en el sitio cada vez que lo ve
+-- Azul  = DERECHA · 120 studs · va directo a CF15
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -16,8 +15,8 @@ local F = S.Farm
 
 local VIS = true
 local FRONT_LEN = 40
-local RIGHT_LEN = 30
-local LEFT_LEN = 120
+local GREEN_LEN = 60   -- izquierda, doble
+local BLUE_LEN = 120   -- derecha
 local FRONT_ANGLES = { 0, 15, -15, 30, -30 }
 local THICK = 0.25
 
@@ -51,8 +50,9 @@ end
 for i = 1, #FRONT_ANGLES do
 	makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70))
 end
-makeRayPart("Right", Color3.fromRGB(70, 255, 120))
-makeRayPart("Left", Color3.fromRGB(70, 170, 255))
+-- INVERTIDO: verde izquierda, azul derecha
+makeRayPart("Left", Color3.fromRGB(70, 255, 120))  -- VERDE
+makeRayPart("Right", Color3.fromRGB(70, 170, 255)) -- AZUL
 
 local function setRayVisual(part, origin, dir, len, hit)
 	if not part then return end
@@ -94,15 +94,6 @@ local function findTsunami()
 		end
 	end
 	return nil
-end
-
-local function tsunamiPos(t)
-	if not t then return nil end
-	if t:IsA("BasePart") then return t.Position end
-	local ok, piv = pcall(function() return t:GetPivot() end)
-	if ok and piv then return piv.Position end
-	local p = t:FindFirstChildWhichIsA("BasePart", true)
-	return p and p.Position
 end
 
 local function stripTouchInterest(root)
@@ -148,53 +139,24 @@ local function rayHitTsunami(origin, dir, len)
 	return nil
 end
 
-local function nearestCFTowardRight(hrpPos)
-	local frames = S.routeCFrames
-	if not frames then return nil end
-	local cf15 = frames[15]
-	if cf15 then
-		local to15 = cf15.Position - hrpPos
-		local flat15 = Vector3.new(to15.X, 0, to15.Z)
-		if flat15.Magnitude > 1 and flat15.Magnitude < 250 and flat15.Unit:Dot(WORLD_RIGHT) > 0.05 then
-			return cf15.Position
-		end
-	end
-	local bestPos, bestScore = nil, -math.huge
-	for i = 1, 200 do
-		local cf = frames[i]
-		if cf then
-			local p = cf.Position
-			local to = p - hrpPos
-			local flat = Vector3.new(to.X, 0, to.Z)
-			local dist = flat.Magnitude
-			if dist > 1 and dist < 200 then
-				local align = flat.Unit:Dot(WORLD_RIGHT)
-				local score = align * 100 - dist * 0.15
-				if align > 0.05 and score > bestScore then
-					bestScore = score
-					bestPos = p
-				end
-			end
-		end
-	end
-	return bestPos
-end
-
 F._forceHoldPos = nil
-F._tsunamiHoldAt13 = false
-F._tsunamiTrailPos = nil
 F._tsunamiSkipNext = false
-F._wasGreenTracking = false
+F._redHoldUntil = 0
+F._greenPauseUntil = 0
+F._greenWasHit = false
+F._redWasHit = false
 
 function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	if not hrp then return baseSpeed or 0, false end
 
+	local now = tick()
 	local origin = hrp.Position + Vector3.new(0, 1.5, 0)
 	local ts = findTsunami()
 	if ts then stripTouchInterest(ts) end
 
 	local cf13 = S.routeCFrames and S.routeCFrames[13]
-	local nearZone = cf13 and (hrp.Position - cf13.Position).Magnitude < 250
+	local cf15 = S.routeCFrames and S.routeCFrames[15]
+	local nearZone = cf13 and (hrp.Position - cf13.Position).Magnitude < 280
 
 	local frontHit = false
 	for i, ang in ipairs(FRONT_ANGLES) do
@@ -204,69 +166,81 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		if hit then frontHit = true end
 	end
 
-	local rightHit = rayHitTsunami(origin, WORLD_RIGHT, RIGHT_LEN)
-	setRayVisual(rayParts.Right, origin, WORLD_RIGHT, RIGHT_LEN, rightHit)
+	-- Verde = izquierda
+	local greenHit = rayHitTsunami(origin, WORLD_LEFT, GREEN_LEN)
+	setRayVisual(rayParts.Left, origin, WORLD_LEFT, GREEN_LEN, greenHit)
 
-	local leftHit = rayHitTsunami(origin, WORLD_LEFT, LEFT_LEN)
-	setRayVisual(rayParts.Left, origin, WORLD_LEFT, LEFT_LEN, leftHit)
+	-- Azul = derecha
+	local blueHit = rayHitTsunami(origin, WORLD_RIGHT, BLUE_LEN)
+	setRayVisual(rayParts.Right, origin, WORLD_RIGHT, BLUE_LEN, blueHit)
 
 	if not nearZone or not F.routeRunning then
 		F._forceHoldPos = nil
-		F._tsunamiHoldAt13 = false
-		F._tsunamiTrailPos = nil
-		F._wasGreenTracking = false
+		F._redHoldUntil = 0
+		F._greenPauseUntil = 0
+		F._greenWasHit = false
+		F._redWasHit = false
 		return baseSpeed or 0, false
 	end
 
-	if frontHit and cf13 then
-		F._tsunamiHoldAt13 = true
+	-- Timers activos: seguir frenando
+	if now < (F._redHoldUntil or 0) and cf13 then
 		F._forceHoldPos = cf13.Position
-		F._tsunamiTrailPos = nil
-		F._tsunamiSkipNext = false
-		F._wasGreenTracking = false
 		local dist = (hrp.Position - cf13.Position).Magnitude
-		if dist > 2.5 then
-			return math.min(baseSpeed or 200, 70), true
-		end
+		if dist > 2.5 then return math.min(baseSpeed or 200, 70), true end
 		return 0, true
 	end
-	F._tsunamiHoldAt13 = false
+	if now < (F._greenPauseUntil or 0) then
+		-- quedarse en el sitio
+		F._forceHoldPos = F._greenPausePos or hrp.Position
+		return 0, true
+	end
 
-	-- VERDE derecha: trail lento al límite del rayo
-	if rightHit then
-		local tpos = tsunamiPos(ts)
-		if tpos then
-			local trail = Vector3.new(tpos.X, hrp.Position.Y, tpos.Z) - WORLD_FWD * 12
-			local fromPlayer = trail - hrp.Position
-			local flat = Vector3.new(fromPlayer.X, 0, fromPlayer.Z)
-			if flat.Magnitude > RIGHT_LEN - 2 then
-				trail = hrp.Position + flat.Unit * (RIGHT_LEN - 2)
-				trail = Vector3.new(trail.X, hrp.Position.Y, trail.Z)
-			end
-			F._tsunamiTrailPos = trail
-			F._forceHoldPos = trail
-			F._tsunamiSkipNext = false
-			F._wasGreenTracking = true
-			return math.min(baseSpeed or 200, 35), true
+	-- ROJO: hold CF13 por 3 segundos (al detectar de nuevo / primer hit)
+	if frontHit and cf13 then
+		if not F._redWasHit then
+			F._redWasHit = true
+			F._redHoldUntil = now + 3
+		end
+		F._forceHoldPos = cf13.Position
+		F._tsunamiSkipNext = false
+		local dist = (hrp.Position - cf13.Position).Magnitude
+		if dist > 2.5 then return math.min(baseSpeed or 200, 70), true end
+		return 0, true
+	else
+		F._redWasHit = false
+	end
+
+	-- VERDE (izquierda): pausa 1s en el sitio cada vez que lo detecta
+	if greenHit then
+		if not F._greenWasHit then
+			F._greenWasHit = true
+			F._greenPauseUntil = now + 1
+			F._greenPausePos = hrp.Position
+		end
+		if now < F._greenPauseUntil then
+			F._forceHoldPos = F._greenPausePos or hrp.Position
+			return 0, true
+		end
+		-- ya pasó el segundo: puede avanzar, pero si sigue viéndolo
+		-- al “borde” del ciclo se re-arma en el siguiente frame de detección
+		-- Re-disparar pausa solo cuando deja de ver y vuelve a ver
+		F._forceHoldPos = nil
+		return math.min(baseSpeed or 200, 50), false
+	else
+		-- dejó de verlo → reset para la próxima detección
+		if F._greenWasHit then
+			F._greenWasHit = false
+			F._greenPauseUntil = 0
+			F._forceHoldPos = nil
 		end
 	end
 
-	if not rightHit and F._wasGreenTracking then
-		F._wasGreenTracking = false
-		F._forceHoldPos = nil
-		F._tsunamiTrailPos = nil
-		F._tsunamiSkipNext = true
-		return baseSpeed or 0, false
-	end
-
-	-- AZUL izquierda: rápido a CF derecha (~15)
-	if leftHit then
-		local rightCF = nearestCFTowardRight(hrp.Position)
-		if rightCF then
-			F._forceHoldPos = rightCF
-			F._tsunamiTrailPos = nil
+	-- AZUL (derecha): directo a CF15
+	if blueHit then
+		if cf15 then
+			F._forceHoldPos = cf15.Position
 			F._tsunamiSkipNext = false
-			F._wasGreenTracking = false
 			return math.max(baseSpeed or 200, 180), true
 		else
 			F._forceHoldPos = nil
@@ -275,7 +249,7 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		end
 	end
 
-	if not rightHit and not frontHit and not leftHit then
+	if not frontHit and not greenHit and not blueHit then
 		F._forceHoldPos = nil
 	end
 
@@ -291,4 +265,4 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-print("[Delta Hub] Tsunami v13 · rojo x2 / verde der trail límite / azul izq x3 → CF der")
+print("[Delta Hub] Tsunami v14 · verde izq 60 pausa1s / azul der CF15 / rojo hold3s")
