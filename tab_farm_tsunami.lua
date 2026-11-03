@@ -1,8 +1,8 @@
--- tab_farm_tsunami.lua v12
--- Rojo = hold CF13
--- Azul (derecha) = CF más cercano a la derecha, rápido
--- Verde (izquierda) = trail lento detrás del tsunami
--- Grosor x2 en rojo/azul; verde se queda más delgado
+-- tab_farm_tsunami.lua v13
+-- Rojo  = FRENTE  · longitud x2 (40) · HOLD CF13
+-- Verde = DERECHA · longitud normal (30) · trail lento al LÍMITE del rayo
+-- Azul  = IZQUIERDA · longitud x3 (120) · rápido al CF más cercano hacia la derecha
+-- Grosor visual normal
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -15,12 +15,11 @@ S.Farm = S.Farm or {}
 local F = S.Farm
 
 local VIS = true
-local FRONT_LEN = 20
+local FRONT_LEN = 40
 local RIGHT_LEN = 30
-local LEFT_LEN = 40
+local LEFT_LEN = 120
 local FRONT_ANGLES = { 0, 15, -15, 30, -30 }
-local THICK_BIG = 1.0   -- rojo + azul (doble del v11)
-local THICK_GREEN = 0.5 -- verde sin duplicar
+local THICK = 0.25
 
 local WORLD_FWD = Vector3.new(0, 0, 1)
 local WORLD_RIGHT = Vector3.new(1, 0, 0)
@@ -33,7 +32,7 @@ folder.Name = "DeltaHubTsunamiRays"
 folder.Parent = Workspace
 
 local rayParts = {}
-local function makeRayPart(name, color, thick)
+local function makeRayPart(name, color)
 	local p = Instance.new("Part")
 	p.Name = name
 	p.Anchored = true
@@ -43,26 +42,24 @@ local function makeRayPart(name, color, thick)
 	p.Material = Enum.Material.Neon
 	p.Color = color
 	p.Transparency = VIS and 0.5 or 1
-	p.Size = Vector3.new(thick, thick, 1)
+	p.Size = Vector3.new(THICK, THICK, 1)
 	p.Parent = folder
-	rayParts[name] = { part = p, thick = thick }
+	rayParts[name] = p
 	return p
 end
 
 for i = 1, #FRONT_ANGLES do
-	makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70), THICK_BIG)
+	makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70))
 end
-makeRayPart("Right", Color3.fromRGB(70, 170, 255), THICK_BIG)
-makeRayPart("Left", Color3.fromRGB(70, 255, 120), THICK_GREEN)
+makeRayPart("Right", Color3.fromRGB(70, 255, 120))
+makeRayPart("Left", Color3.fromRGB(70, 170, 255))
 
-local function setRayVisual(entry, origin, dir, len, hit)
-	if not entry or not entry.part then return end
-	local part = entry.part
-	local thick = entry.thick or THICK_BIG
+local function setRayVisual(part, origin, dir, len, hit)
+	if not part then return end
 	local d = dir.Magnitude > 1e-4 and dir.Unit or Vector3.new(0, 0, 1)
 	local useLen = hit and hit.Distance or len
 	useLen = math.max(useLen, 0.2)
-	part.Size = Vector3.new(thick, thick, useLen)
+	part.Size = Vector3.new(THICK, THICK, useLen)
 	part.CFrame = CFrame.new(origin + d * (useLen * 0.5), origin + d * useLen)
 	part.Transparency = VIS and (hit and 0.3 or 0.5) or 1
 end
@@ -154,6 +151,14 @@ end
 local function nearestCFTowardRight(hrpPos)
 	local frames = S.routeCFrames
 	if not frames then return nil end
+	local cf15 = frames[15]
+	if cf15 then
+		local to15 = cf15.Position - hrpPos
+		local flat15 = Vector3.new(to15.X, 0, to15.Z)
+		if flat15.Magnitude > 1 and flat15.Magnitude < 250 and flat15.Unit:Dot(WORLD_RIGHT) > 0.05 then
+			return cf15.Position
+		end
+	end
 	local bestPos, bestScore = nil, -math.huge
 	for i = 1, 200 do
 		local cf = frames[i]
@@ -213,7 +218,6 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		return baseSpeed or 0, false
 	end
 
-	-- ROJO: HOLD en CF13
 	if frontHit and cf13 then
 		F._tsunamiHoldAt13 = true
 		F._forceHoldPos = cf13.Position
@@ -228,21 +232,26 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	end
 	F._tsunamiHoldAt13 = false
 
-	-- VERDE (izquierda): trail lento detrás mientras lo vea
-	if leftHit then
+	-- VERDE derecha: trail lento al límite del rayo
+	if rightHit then
 		local tpos = tsunamiPos(ts)
 		if tpos then
-			local behind = Vector3.new(tpos.X, hrp.Position.Y, tpos.Z) - WORLD_FWD * 30
-			F._tsunamiTrailPos = behind
-			F._forceHoldPos = behind
+			local trail = Vector3.new(tpos.X, hrp.Position.Y, tpos.Z) - WORLD_FWD * 12
+			local fromPlayer = trail - hrp.Position
+			local flat = Vector3.new(fromPlayer.X, 0, fromPlayer.Z)
+			if flat.Magnitude > RIGHT_LEN - 2 then
+				trail = hrp.Position + flat.Unit * (RIGHT_LEN - 2)
+				trail = Vector3.new(trail.X, hrp.Position.Y, trail.Z)
+			end
+			F._tsunamiTrailPos = trail
+			F._forceHoldPos = trail
 			F._tsunamiSkipNext = false
 			F._wasGreenTracking = true
-			return math.min(baseSpeed or 200, 40), true
+			return math.min(baseSpeed or 200, 35), true
 		end
 	end
 
-	-- Verde dejó de verlo → avanzar
-	if not leftHit and F._wasGreenTracking then
+	if not rightHit and F._wasGreenTracking then
 		F._wasGreenTracking = false
 		F._forceHoldPos = nil
 		F._tsunamiTrailPos = nil
@@ -250,8 +259,8 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 		return baseSpeed or 0, false
 	end
 
-	-- AZUL (derecha): CF más cercano hacia la derecha, rápido
-	if rightHit then
+	-- AZUL izquierda: rápido a CF derecha (~15)
+	if leftHit then
 		local rightCF = nearestCFTowardRight(hrp.Position)
 		if rightCF then
 			F._forceHoldPos = rightCF
@@ -282,4 +291,4 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-print("[Delta Hub] Tsunami v12 · rojo hold / azul CF der / verde trail")
+print("[Delta Hub] Tsunami v13 · rojo x2 / verde der trail límite / azul izq x3 → CF der")
