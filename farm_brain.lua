@@ -1,5 +1,5 @@
 -- DELTA HUB farm_brain Halloween
--- Sin hitbox de meta · 3s tras último CF · reinicio si infinito
+-- Sin hitbox de meta · 1.2s tras último CF · reinicio si infinito
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -28,9 +28,8 @@ B._lastLapDied = false
 B._noclipOn = false
 
 local NOCLIP_AFTER_CF = 16
-local POST_ROUTE_WAIT = 3 -- segundos tras último CF / win para reiniciar
+local POST_ROUTE_WAIT = 1.2 -- tras último CF / win (silencioso)
 
--- limpiar hitbox vieja si quedó
 pcall(function()
 	local folder = Workspace:FindFirstChild("DeltaHubHWHitbox")
 	if folder then folder:Destroy() end
@@ -279,7 +278,6 @@ local function runOneLap()
 
 	setNoclip(true)
 
-	-- acercarse al WinBlock (rápido, no arrastrar a 20)
 	if not winPos then winPos = select(1, findWinBlockPos(wbName)) end
 	if winPos and hrp and F.routeRunning then
 		local t0 = tick()
@@ -308,9 +306,8 @@ local function runOneLap()
 	clearBV(hrp)
 	setNoclip(false)
 
-	-- 3 segundos para agarrar el win, luego la vuelta cuenta como terminada
+	-- espera post-ruta (sin aviso al jugador)
 	if F.routeRunning then
-		notify("Win: esperando " .. POST_ROUTE_WAIT .. "s...")
 		local tWait = tick()
 		while F.routeRunning and tick() - tWait < POST_ROUTE_WAIT do
 			hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -353,7 +350,6 @@ function B.startRoute()
 				end
 			else
 				if B.pendingEvent then goCollectPending() end
-				-- delay extra del usuario (si puso) entre vueltas infinitas
 				if F.infinite and F.delayTime and F.delayTime > 0 then
 					task.wait(F.delayTime)
 				end
@@ -401,4 +397,4 @@ task.spawn(function()
 	end
 end)
 
-print("[Delta Hub] farm_brain listo (sin hitbox · 3s post-ruta)")
+print("[Delta Hub] farm_brain listo (sin hitbox · 1.2s post-ruta)")
