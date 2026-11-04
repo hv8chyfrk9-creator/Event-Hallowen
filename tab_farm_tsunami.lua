@@ -1,5 +1,5 @@
--- tab_farm_tsunami.lua v14.1
--- Rays invisibles · lógica igual v14
+-- tab_farm_tsunami.lua v14.2
+-- sin azul · rojo x2 (80)
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -12,14 +12,12 @@ S.Farm = S.Farm or {}
 local F = S.Farm
 
 local VIS = false
-local FRONT_LEN = 40
+local FRONT_LEN = 80
 local GREEN_LEN = 60
-local BLUE_LEN = 120
 local FRONT_ANGLES = { 0, 15, -15, 30, -30 }
 local THICK = 0.25
 
 local WORLD_FWD = Vector3.new(0, 0, 1)
-local WORLD_RIGHT = Vector3.new(1, 0, 0)
 local WORLD_LEFT = Vector3.new(-1, 0, 0)
 
 local oldFolder = Workspace:FindFirstChild("DeltaHubTsunamiRays")
@@ -47,7 +45,6 @@ end
 
 for i = 1, #FRONT_ANGLES do makeRayPart("Front_" .. i, Color3.fromRGB(255, 70, 70)) end
 makeRayPart("Left", Color3.fromRGB(70, 255, 120))
-makeRayPart("Right", Color3.fromRGB(70, 170, 255))
 
 local function setRayVisual(part, origin, dir, len, hit)
 	if not part then return end
@@ -130,7 +127,6 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	local ts = findTsunami()
 	if ts then stripTouchInterest(ts) end
 	local cf13 = S.routeCFrames and S.routeCFrames[13]
-	local cf15 = S.routeCFrames and S.routeCFrames[15]
 	local nearZone = cf13 and (hrp.Position - cf13.Position).Magnitude < 280
 
 	local frontHit = false
@@ -142,8 +138,6 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	end
 	local greenHit = rayHitTsunami(origin, WORLD_LEFT, GREEN_LEN)
 	setRayVisual(rayParts.Left, origin, WORLD_LEFT, GREEN_LEN, greenHit)
-	local blueHit = rayHitTsunami(origin, WORLD_RIGHT, BLUE_LEN)
-	setRayVisual(rayParts.Right, origin, WORLD_RIGHT, BLUE_LEN, blueHit)
 
 	if not nearZone or not F.routeRunning then
 		F._forceHoldPos = nil
@@ -186,18 +180,7 @@ function S.tsunamiDangerSpeed(hrp, baseSpeed, nextCfPos)
 	else
 		if F._greenWasHit then F._greenWasHit = false F._greenPauseUntil = 0 F._forceHoldPos = nil end
 	end
-	if blueHit then
-		if cf15 then
-			F._forceHoldPos = cf15.Position
-			F._tsunamiSkipNext = false
-			return math.max(baseSpeed or 200, 180), true
-		else
-			F._forceHoldPos = nil
-			F._tsunamiSkipNext = true
-			return baseSpeed or 0, false
-		end
-	end
-	if not frontHit and not greenHit and not blueHit then F._forceHoldPos = nil end
+	if not frontHit and not greenHit then F._forceHoldPos = nil end
 	return baseSpeed or 0, false
 end
 
@@ -208,4 +191,4 @@ RunService.Heartbeat:Connect(function()
 	if hrp then S.tsunamiDangerSpeed(hrp, 0, nil) end
 end)
 
-print("[Delta Hub] Tsunami v14.1 rays ocultos")
+print("[Delta Hub] Tsunami v14.2 sin azul rojo80")
